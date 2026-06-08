@@ -258,7 +258,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
 
         #region ISearchForNewBook
 
-        public List<Book> SearchForNewBook(string title, string author)
+        public List<Book> SearchForNewBook(string title, string author, bool getAllEditions = true)
         {
             var query = author.IsNotNullOrWhiteSpace() ? $"{title} {author}" : title;
             return SearchForNewBook(query);
@@ -268,6 +268,46 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
         {
             var results = Search(title, 20);
             return results.Select(MapSearchDocToBook).Where(b => b != null).ToList();
+        }
+
+        public List<Book> SearchByIsbn(string isbn)
+        {
+            var edition = GetEditionByIsbn(isbn);
+            if (edition == null)
+            {
+                return new List<Book>();
+            }
+
+            var workKey = edition.Works?.FirstOrDefault()?.Key?.Replace("/works/", "");
+            if (workKey.IsNullOrWhiteSpace())
+            {
+                return new List<Book>();
+            }
+
+            var work = GetWork(workKey);
+            var editions = GetWorkEditions(workKey);
+            var book = MapWork(work, editions);
+            return new List<Book> { book };
+        }
+
+        public List<Book> SearchByAsin(string asin)
+        {
+            // Open Library doesn't have great ASIN search — fall back to general search
+            var results = Search(asin, 5);
+            return results.Select(MapSearchDocToBook).Where(b => b != null).ToList();
+        }
+
+        public List<Book> SearchByOpenLibraryWorkId(string workId, bool getAllEditions = true)
+        {
+            var work = GetWork(workId);
+            if (work == null)
+            {
+                return new List<Book>();
+            }
+
+            var editions = getAllEditions ? GetWorkEditions(workId) : new List<OpenLibraryEditionResource>();
+            var book = MapWork(work, editions);
+            return new List<Book> { book };
         }
 
         #endregion

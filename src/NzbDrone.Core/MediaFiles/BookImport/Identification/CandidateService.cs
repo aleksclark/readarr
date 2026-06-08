@@ -3,9 +3,8 @@ using System.Linq;
 using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Books;
-using NzbDrone.Core.MetadataSource;
-using NzbDrone.Core.MetadataSource;
 using NzbDrone.Core.Parser.Model;
+using NzbDrone.Core.MetadataSource;
 
 namespace NzbDrone.Core.MediaFiles.BookImport.Identification
 {
