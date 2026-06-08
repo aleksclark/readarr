@@ -60,7 +60,7 @@ jobs:
         run: dotnet restore src/Readarr.sln
 
       - name: Build
-        run: dotnet build src/Readarr.sln --no-restore -c Release -p:RuntimeIdentifier=${{ matrix.runtime }}
+        run: dotnet build src/Readarr.sln --no-restore -c Release
 
       - name: Publish
         run: dotnet publish src/NzbDrone.Console/Readarr.Console.csproj -c Release -r ${{ matrix.runtime }} --self-contained false -o ${{ env.READARR_OUTPUT }}
