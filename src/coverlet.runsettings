@@ -4,18 +4,16 @@
     <DataCollectors>
       <DataCollector friendlyName="XPlat code coverage">
         <Configuration>
-          <Format>opencover</Format>
+          <Format>cobertura,opencover</Format>
           <Exclude>[Readarr.*.Test]*,[Readarr.Test.*]*,[Readarr.Api.V1]*</Exclude>
+          <ExcludeByFile>**/Migrations/**,**/obj/**</ExcludeByFile>
+          <SingleHit>false</SingleHit>
+          <UseSourceLink>true</UseSourceLink>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+          <SkipAutoProps>true</SkipAutoProps>
+          <DeterministicReport>true</DeterministicReport>
         </Configuration>
       </DataCollector>
     </DataCollectors>
   </DataCollectionRunSettings>
-  <InProcDataCollectionRunSettings>
-    <InProcDataCollectors>
-      <InProcDataCollector assemblyQualifiedName="Coverlet.Collector.DataCollection.CoverletInProcDataCollector, coverlet.collector, Version=1.1.0.0, Culture=neutral, PublicKeyToken=null"
-                           friendlyName="XPlat Code Coverage"
-                           enabled="True"
-                           codebase="coverlet.collector.dll" />
-    </InProcDataCollectors>
-  </InProcDataCollectionRunSettings>
 </RunSettings>
