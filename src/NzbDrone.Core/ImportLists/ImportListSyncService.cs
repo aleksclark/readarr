@@ -12,7 +12,7 @@ using NzbDrone.Core.IndexerSearch;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.MetadataSource;
-using NzbDrone.Core.MetadataSource.Goodreads;
+using NzbDrone.Core.MetadataSource.OpenLibrary;
 using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.ImportLists
@@ -22,8 +22,8 @@ namespace NzbDrone.Core.ImportLists
         private readonly IImportListFactory _importListFactory;
         private readonly IImportListExclusionService _importListExclusionService;
         private readonly IFetchAndParseImportList _listFetcherAndParser;
-        private readonly IGoodreadsProxy _goodreadsProxy;
-        private readonly IGoodreadsSearchProxy _goodreadsSearchProxy;
+        private readonly IOpenLibraryProxy _openLibraryProxy;
+        private readonly ISearchForNewBook _bookSearchService;
         private readonly IProvideBookInfo _bookInfoProxy;
         private readonly IAuthorService _authorService;
         private readonly IBookService _bookService;
@@ -37,8 +37,8 @@ namespace NzbDrone.Core.ImportLists
         public ImportListSyncService(IImportListFactory importListFactory,
                                      IImportListExclusionService importListExclusionService,
                                      IFetchAndParseImportList listFetcherAndParser,
-                                     IGoodreadsProxy goodreadsProxy,
-                                     IGoodreadsSearchProxy goodreadsSearchProxy,
+                                     IOpenLibraryProxy openLibraryProxy,
+                                     ISearchForNewBook bookSearchService,
                                      IProvideBookInfo bookInfoProxy,
                                      IAuthorService authorService,
                                      IBookService bookService,
@@ -52,8 +52,8 @@ namespace NzbDrone.Core.ImportLists
             _importListFactory = importListFactory;
             _importListExclusionService = importListExclusionService;
             _listFetcherAndParser = listFetcherAndParser;
-            _goodreadsProxy = goodreadsProxy;
-            _goodreadsSearchProxy = goodreadsSearchProxy;
+            _openLibraryProxy = openLibraryProxy;
+            _bookSearchService = bookSearchService;
             _bookInfoProxy = bookInfoProxy;
             _authorService = authorService;
             _bookService = bookService;
@@ -117,18 +117,18 @@ namespace NzbDrone.Core.ImportLists
 
                 var importList = _importListFactory.Get(report.ImportListId);
 
-                if (report.Book.IsNotNullOrWhiteSpace() || report.EditionGoodreadsId.IsNotNullOrWhiteSpace())
+                if (report.Book.IsNotNullOrWhiteSpace() || report.EditionMetadataId.IsNotNullOrWhiteSpace())
                 {
-                    if (report.EditionGoodreadsId.IsNullOrWhiteSpace() || report.AuthorGoodreadsId.IsNullOrWhiteSpace() || report.BookGoodreadsId.IsNullOrWhiteSpace())
+                    if (report.EditionMetadataId.IsNullOrWhiteSpace() || report.AuthorMetadataId.IsNullOrWhiteSpace() || report.BookMetadataId.IsNullOrWhiteSpace())
                     {
                         MapBookReport(report);
                     }
 
                     ProcessBookReport(importList, report, listExclusions, booksToAdd, authorsToAdd);
                 }
-                else if (report.Author.IsNotNullOrWhiteSpace() || report.AuthorGoodreadsId.IsNotNullOrWhiteSpace())
+                else if (report.Author.IsNotNullOrWhiteSpace() || report.AuthorMetadataId.IsNotNullOrWhiteSpace())
                 {
-                    if (report.AuthorGoodreadsId.IsNullOrWhiteSpace())
+                    if (report.AuthorMetadataId.IsNullOrWhiteSpace())
                     {
                         MapAuthorReport(report);
                     }
@@ -155,54 +155,54 @@ namespace NzbDrone.Core.ImportLists
 
         private void MapBookReport(ImportListItemInfo report)
         {
-            if (report.AuthorGoodreadsId.IsNotNullOrWhiteSpace() && report.BookGoodreadsId.IsNotNullOrWhiteSpace())
+            if (report.AuthorMetadataId.IsNotNullOrWhiteSpace() && report.BookMetadataId.IsNotNullOrWhiteSpace())
             {
                 return;
             }
 
-            if (report.EditionGoodreadsId.IsNotNullOrWhiteSpace() && int.TryParse(report.EditionGoodreadsId, out var goodreadsId))
+            if (report.EditionMetadataId.IsNotNullOrWhiteSpace() && int.TryParse(report.EditionMetadataId, out var _))
             {
                 // check the local DB
-                var edition = _editionService.GetEditionByForeignEditionId(report.EditionGoodreadsId);
+                var edition = _editionService.GetEditionByForeignEditionId(report.EditionMetadataId);
 
                 if (edition != null)
                 {
                     var book = edition.Book.Value;
-                    report.BookGoodreadsId = book.ForeignBookId;
+                    report.BookMetadataId = book.ForeignBookId;
                     report.Book = edition.Title;
                     report.Author ??= book.AuthorMetadata.Value.Name;
-                    report.AuthorGoodreadsId ??= book.AuthorMetadata.Value.ForeignAuthorId;
+                    report.AuthorMetadataId ??= book.AuthorMetadata.Value.ForeignAuthorId;
                     return;
                 }
 
                 try
                 {
-                    var remoteBook = _goodreadsProxy.GetBookInfo(report.EditionGoodreadsId);
+                    var remoteBook = _openLibraryProxy.GetEdition(report.EditionMetadataId);
 
-                    _logger.Trace($"Mapped {report.EditionGoodreadsId} to [{remoteBook.ForeignBookId}] {remoteBook.Title}");
+                    _logger.Trace($"Mapped {report.EditionMetadataId} to [{remoteBook.ForeignBookId}] {remoteBook.Title}");
 
-                    report.BookGoodreadsId = remoteBook.ForeignBookId;
+                    report.BookMetadataId = remoteBook.ForeignBookId;
                     report.Book = remoteBook.Title;
                     report.Author ??= remoteBook.AuthorMetadata.Value.Name;
-                    report.AuthorGoodreadsId ??= remoteBook.AuthorMetadata.Value.ForeignAuthorId;
+                    report.AuthorMetadataId ??= remoteBook.AuthorMetadata.Value.ForeignAuthorId;
                 }
                 catch (BookNotFoundException)
                 {
-                    _logger.Debug($"Nothing found for edition [{report.EditionGoodreadsId}]");
-                    report.EditionGoodreadsId = null;
+                    _logger.Debug($"Nothing found for edition [{report.EditionMetadataId}]");
+                    report.EditionMetadataId = null;
                 }
             }
-            else if (report.BookGoodreadsId.IsNotNullOrWhiteSpace())
+            else if (report.BookMetadataId.IsNotNullOrWhiteSpace())
             {
-                var mappedBook = _bookInfoProxy.GetBookInfo(report.BookGoodreadsId);
+                var mappedBook = _bookInfoProxy.GetBookInfo(report.BookMetadataId);
 
-                report.BookGoodreadsId = mappedBook.Item2.ForeignBookId;
+                report.BookMetadataId = mappedBook.Item2.ForeignBookId;
                 report.Book = mappedBook.Item2.Title;
-                report.AuthorGoodreadsId = mappedBook.Item3.First().ForeignAuthorId;
+                report.AuthorMetadataId = mappedBook.Item3.First().ForeignAuthorId;
             }
             else
             {
-                var mappedBook = _goodreadsSearchProxy.Search($"{report.Book} {report.Author}").FirstOrDefault();
+                var mappedBook = _bookSearchService.SearchForNewBook($"{report.Book} {report.Author}").FirstOrDefault();
 
                 if (mappedBook == null)
                 {
@@ -212,40 +212,40 @@ namespace NzbDrone.Core.ImportLists
 
                 _logger.Trace($"Mapped Book {report.Book} by Author {report.Author} to [{mappedBook.WorkId}] {mappedBook.BookTitleBare}");
 
-                report.BookGoodreadsId = mappedBook.WorkId.ToString();
+                report.BookMetadataId = mappedBook.WorkId.ToString();
                 report.Book = mappedBook.BookTitleBare;
                 report.Author ??= mappedBook.Author.Name;
-                report.AuthorGoodreadsId ??= mappedBook.Author.Id.ToString();
-                report.EditionGoodreadsId = mappedBook.BookId.ToString();
+                report.AuthorMetadataId ??= mappedBook.Author.Id.ToString();
+                report.EditionMetadataId = mappedBook.BookId.ToString();
             }
         }
 
         private void ProcessBookReport(ImportListDefinition importList, ImportListItemInfo report, List<ImportListExclusion> listExclusions, List<Book> booksToAdd, List<Author> authorsToAdd)
         {
             // Check to see if book in DB
-            var existingBook = _bookService.FindById(report.BookGoodreadsId);
+            var existingBook = _bookService.FindById(report.BookMetadataId);
 
             // Check to see if book excluded
-            var excludedBook = listExclusions.SingleOrDefault(s => s.ForeignId == report.BookGoodreadsId);
+            var excludedBook = listExclusions.SingleOrDefault(s => s.ForeignId == report.BookMetadataId);
 
             // Check to see if author excluded
-            var excludedAuthor = listExclusions.SingleOrDefault(s => s.ForeignId == report.AuthorGoodreadsId);
+            var excludedAuthor = listExclusions.SingleOrDefault(s => s.ForeignId == report.AuthorMetadataId);
 
             if (excludedBook != null)
             {
-                _logger.Debug("{0} [{1}] Rejected due to list exclusion", report.EditionGoodreadsId, report.Book);
+                _logger.Debug("{0} [{1}] Rejected due to list exclusion", report.EditionMetadataId, report.Book);
                 return;
             }
 
             if (excludedAuthor != null)
             {
-                _logger.Debug("{0} [{1}] Rejected due to list exclusion for parent author", report.EditionGoodreadsId, report.Book);
+                _logger.Debug("{0} [{1}] Rejected due to list exclusion for parent author", report.EditionMetadataId, report.Book);
                 return;
             }
 
             if (existingBook != null)
             {
-                _logger.Debug("{0} [{1}] Rejected, Book Exists in DB.  Ensuring Book and Author monitored.", report.EditionGoodreadsId, report.Book);
+                _logger.Debug("{0} [{1}] Rejected, Book Exists in DB.  Ensuring Book and Author monitored.", report.EditionMetadataId, report.Book);
 
                 if (importList.ShouldMonitorExisting && importList.ShouldMonitor != ImportListMonitorType.None)
                 {
@@ -288,7 +288,7 @@ namespace NzbDrone.Core.ImportLists
             }
 
             // Append Book if not already in DB or already on add list
-            if (booksToAdd.All(s => s.ForeignBookId != report.BookGoodreadsId))
+            if (booksToAdd.All(s => s.ForeignBookId != report.BookMetadataId))
             {
                 var monitored = importList.ShouldMonitor != ImportListMonitorType.None;
 
@@ -308,14 +308,14 @@ namespace NzbDrone.Core.ImportLists
                     }
                 };
 
-                if (report.AuthorGoodreadsId != null && report.Author != null)
+                if (report.AuthorMetadataId != null && report.Author != null)
                 {
                     toAddAuthor = ProcessAuthorReport(importList, report, listExclusions, authorsToAdd);
                 }
 
                 var toAdd = new Book
                 {
-                    ForeignBookId = report.BookGoodreadsId,
+                    ForeignBookId = report.BookMetadataId,
                     Monitored = monitored,
                     AnyEditionOk = true,
                     Editions = new List<Edition>(),
@@ -328,11 +328,11 @@ namespace NzbDrone.Core.ImportLists
                     }
                 };
 
-                if (report.EditionGoodreadsId.IsNotNullOrWhiteSpace() && int.TryParse(report.EditionGoodreadsId, out var goodreadsId))
+                if (report.EditionMetadataId.IsNotNullOrWhiteSpace() && int.TryParse(report.EditionMetadataId, out var _))
                 {
                     toAdd.Editions.Value.Add(new Edition
                     {
-                        ForeignEditionId = report.EditionGoodreadsId,
+                        ForeignEditionId = report.EditionMetadataId,
                         Monitored = true
                     });
                 }
@@ -349,7 +349,7 @@ namespace NzbDrone.Core.ImportLists
 
         private void MapAuthorReport(ImportListItemInfo report)
         {
-            var mappedBook = _goodreadsSearchProxy.Search(report.Author).FirstOrDefault();
+            var mappedBook = _bookSearchService.SearchForNewBook(report.Author).FirstOrDefault();
 
             if (mappedBook == null)
             {
@@ -360,34 +360,34 @@ namespace NzbDrone.Core.ImportLists
             _logger.Trace($"Mapped {report.Author} to [{mappedBook.Author.Name}]");
 
             report.Author = mappedBook.Author.Name;
-            report.AuthorGoodreadsId = mappedBook.Author.Id.ToString();
+            report.AuthorMetadataId = mappedBook.Author.Id.ToString();
         }
 
         private Author ProcessAuthorReport(ImportListDefinition importList, ImportListItemInfo report, List<ImportListExclusion> listExclusions, List<Author> authorsToAdd)
         {
-            if (report.AuthorGoodreadsId == null)
+            if (report.AuthorMetadataId == null)
             {
                 return null;
             }
 
             // Check to see if author in DB
-            var existingAuthor = _authorService.FindById(report.AuthorGoodreadsId);
+            var existingAuthor = _authorService.FindById(report.AuthorMetadataId);
 
             // Check to see if author excluded
-            var excludedAuthor = listExclusions.SingleOrDefault(s => s.ForeignId == report.AuthorGoodreadsId);
+            var excludedAuthor = listExclusions.SingleOrDefault(s => s.ForeignId == report.AuthorMetadataId);
 
             // Check to see if author in import
-            var existingImportAuthor = authorsToAdd.Find(i => i.ForeignAuthorId == report.AuthorGoodreadsId);
+            var existingImportAuthor = authorsToAdd.Find(i => i.ForeignAuthorId == report.AuthorMetadataId);
 
             if (excludedAuthor != null)
             {
-                _logger.Debug("{0} [{1}] Rejected due to list exclusion", report.AuthorGoodreadsId, report.Author);
+                _logger.Debug("{0} [{1}] Rejected due to list exclusion", report.AuthorMetadataId, report.Author);
                 return null;
             }
 
             if (existingAuthor != null)
             {
-                _logger.Debug("{0} [{1}] Rejected, Author Exists in DB.  Ensuring Author monitored", report.AuthorGoodreadsId, report.Author);
+                _logger.Debug("{0} [{1}] Rejected, Author Exists in DB.  Ensuring Author monitored", report.AuthorMetadataId, report.Author);
 
                 if (importList.ShouldMonitorExisting && !existingAuthor.Monitored)
                 {
@@ -400,7 +400,7 @@ namespace NzbDrone.Core.ImportLists
 
             if (existingImportAuthor != null)
             {
-                _logger.Debug("{0} [{1}] Rejected, Author Exists in Import.", report.AuthorGoodreadsId, report.Author);
+                _logger.Debug("{0} [{1}] Rejected, Author Exists in Import.", report.AuthorMetadataId, report.Author);
 
                 return existingImportAuthor;
             }
@@ -411,7 +411,7 @@ namespace NzbDrone.Core.ImportLists
             {
                 Metadata = new AuthorMetadata
                 {
-                    ForeignAuthorId = report.AuthorGoodreadsId,
+                    ForeignAuthorId = report.AuthorMetadataId,
                     Name = report.Author
                 },
                 Monitored = monitored,

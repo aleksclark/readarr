@@ -79,6 +79,9 @@ namespace NzbDrone.Core.Qualities
         public static Quality FLAC => new Quality(11, "FLAC");
         public static Quality M4B => new Quality(12, "M4B");
         public static Quality UnknownAudio => new Quality(13, "Unknown Audio");
+        public static Quality AAC => new Quality(14, "AAC");
+        public static Quality OGG => new Quality(15, "OGG");
+        public static Quality OPUS => new Quality(16, "OPUS");
 
         static Quality()
         {
@@ -92,7 +95,10 @@ namespace NzbDrone.Core.Qualities
                 UnknownAudio,
                 MP3,
                 M4B,
-                FLAC
+                FLAC,
+                AAC,
+                OGG,
+                OPUS
             };
 
             AllLookup = new Quality[All.Select(v => v.Id).Max() + 1];
@@ -109,8 +115,11 @@ namespace NzbDrone.Core.Qualities
                 new QualityDefinition(Quality.EPUB)         { Weight = 11, MinSize = 0, MaxSize = 350, GroupWeight = 11 },
                 new QualityDefinition(Quality.AZW3)         { Weight = 12, MinSize = 0, MaxSize = 350, GroupWeight = 12 },
                 new QualityDefinition(Quality.UnknownAudio) { Weight = 50, MinSize = 0, MaxSize = 350, GroupWeight = 50 },
-                new QualityDefinition(Quality.MP3)      { Weight = 100, MinSize = 0, MaxSize = 350, GroupWeight = 100 },
+                new QualityDefinition(Quality.MP3)          { Weight = 100, MinSize = 0, MaxSize = 350, GroupWeight = 100 },
+                new QualityDefinition(Quality.AAC)          { Weight = 102, MinSize = 0, MaxSize = 350, GroupWeight = 102 },
+                new QualityDefinition(Quality.OGG)          { Weight = 103, MinSize = 0, MaxSize = 350, GroupWeight = 103 },
                 new QualityDefinition(Quality.M4B)          { Weight = 105, MinSize = 0, MaxSize = 350, GroupWeight = 105 },
+                new QualityDefinition(Quality.OPUS)         { Weight = 107, MinSize = 0, MaxSize = 350, GroupWeight = 107 },
                 new QualityDefinition(Quality.FLAC)         { Weight = 110, MinSize = 0, MaxSize = null, GroupWeight = 110 },
             };
         }

@@ -38,6 +38,12 @@ namespace NzbDrone.Core.Books
         public List<Links> Links { get; set; }
         public Ratings Ratings { get; set; }
 
+        // Audiobook/format-specific fields
+        public EditionFormat EditionFormat { get; set; }
+        public int? DurationMinutes { get; set; }
+        public string Narrator { get; set; }
+        public bool IsAbridged { get; set; }
+
         // These are Readarr generated/config
         public bool Monitored { get; set; }
         public bool ManualAdd { get; set; }
@@ -71,6 +77,10 @@ namespace NzbDrone.Core.Books
             Images = other.Images.Any() ? other.Images : Images;
             Links = other.Links;
             Ratings = other.Ratings;
+            EditionFormat = other.EditionFormat;
+            DurationMinutes = other.DurationMinutes;
+            Narrator = other.Narrator;
+            IsAbridged = other.IsAbridged;
         }
 
         public override void UseDbFieldsFrom(Edition other)

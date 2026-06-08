@@ -7,7 +7,7 @@ namespace NzbDrone.Core.Notifications.Webhook
         public int Id { get; set; }
         public string Name { get; set; }
         public string Path { get; set; }
-        public string GoodreadsId { get; set; }
+        public string MetadataId { get; set; }
 
         public WebhookAuthor()
         {
@@ -18,7 +18,7 @@ namespace NzbDrone.Core.Notifications.Webhook
             Id = author.Id;
             Name = author.Name;
             Path = author.Path;
-            GoodreadsId = author.Metadata.Value.ForeignAuthorId;
+            MetadataId = author.Metadata.Value.ForeignAuthorId;
         }
     }
 }
