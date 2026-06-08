@@ -462,12 +462,12 @@ namespace NzbDrone.Common.Disk
                 throw new FileNotFoundException("Unable to find file: " + path, path);
             }
 
-            return (FileStream)_fileSystem.FileStream.Create(path, FileMode.Open, FileAccess.Read);
+            return (FileStream)_fileSystem.FileStream.New(path, FileMode.Open, FileAccess.Read);
         }
 
         public FileStream OpenWriteStream(string path)
         {
-            return (FileStream)_fileSystem.FileStream.Create(path, FileMode.Create);
+            return (FileStream)_fileSystem.FileStream.New(path, FileMode.Create);
         }
 
         public List<IMount> GetMounts()
