@@ -35,7 +35,7 @@
     <!--
         CS1591: Missing XML comment for publicly visible type or member 'Type_or_Member'
     -->
-    <NoWarn>$(NoWarn);CS1591;NU1902;NU1903;NU1904;SYSLIB0014;SYSLIB0051;CA2022</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CS0618;NU1902;NU1903;NU1904;SYSLIB0014;SYSLIB0051;CA2022</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
