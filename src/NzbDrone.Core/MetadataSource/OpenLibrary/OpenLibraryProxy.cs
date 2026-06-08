@@ -8,10 +8,12 @@ using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Http;
 using NzbDrone.Core.Books;
+using NzbDrone.Core.Datastore;
 using NzbDrone.Core.Exceptions;
 using NzbDrone.Core.Http;
 using NzbDrone.Core.MediaCover;
 using NzbDrone.Core.MetadataSource.OpenLibrary.Resources;
+using NzbDrone.Core.Parser;
 
 namespace NzbDrone.Core.MetadataSource.OpenLibrary
 {
@@ -51,8 +53,6 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
                 .KeepAlive()
                 .CreateFactory();
         }
-
-        #region IOpenLibraryProxy
 
         public List<OpenLibrarySearchDoc> Search(string query, int limit = 20)
         {
@@ -143,10 +143,6 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             return ExecuteRequest<OpenLibraryEditionResource>(httpRequest, TimeSpan.FromDays(7));
         }
 
-        #endregion
-
-        #region IProvideAuthorInfo
-
         public Author GetAuthorInfo(string readarrId, bool useCache = true)
         {
             // readarrId is the OL Author ID, e.g. "OL23919A"
@@ -166,10 +162,6 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             // Return empty set — rely on periodic full refresh.
             return new HashSet<string>();
         }
-
-        #endregion
-
-        #region IProvideBookInfo
 
         public Tuple<string, Book, List<AuthorMetadata>> GetBookInfo(string foreignEditionId)
         {
@@ -211,10 +203,6 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             return new Tuple<string, Book, List<AuthorMetadata>>(workKey, book, authors);
         }
 
-        #endregion
-
-        #region ISearchForNewAuthor
-
         public List<Author> SearchForNewAuthor(string title)
         {
             var results = Search(title, 10);
@@ -227,7 +215,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
                     continue;
                 }
 
-                for (int i = 0; i < Math.Min(doc.AuthorKeys.Count, doc.AuthorNames.Count); i++)
+                for (var i = 0; i < Math.Min(doc.AuthorKeys.Count, doc.AuthorNames.Count); i++)
                 {
                     var authorKey = doc.AuthorKeys[i];
                     if (!authorMap.ContainsKey(authorKey))
@@ -236,12 +224,9 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
                         {
                             Metadata = new AuthorMetadata
                             {
-                                Value = new AuthorMetadata
-                                {
-                                    ForeignAuthorId = authorKey,
-                                    Name = doc.AuthorNames[i],
-                                    Status = AuthorStatusType.Continuing,
-                                }
+                                ForeignAuthorId = authorKey,
+                                Name = doc.AuthorNames[i],
+                                Status = AuthorStatusType.Continuing,
                             },
                             CleanName = doc.AuthorNames[i].CleanAuthorName(),
                         };
@@ -253,10 +238,6 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
 
             return authorMap.Values.ToList();
         }
-
-        #endregion
-
-        #region ISearchForNewBook
 
         public List<Book> SearchForNewBook(string title, string author, bool getAllEditions = true)
         {
@@ -310,19 +291,11 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             return new List<Book> { book };
         }
 
-        #endregion
-
-        #region ISearchForNewEntity
-
         public List<object> SearchForNewEntity(string title)
         {
             var books = SearchForNewBook(title);
             return books.Cast<object>().ToList();
         }
-
-        #endregion
-
-        #region Mapping
 
         private Author MapAuthor(OpenLibraryAuthorResource olAuthor, List<OpenLibraryWorkResource> works)
         {
@@ -543,10 +516,6 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             return book;
         }
 
-        #endregion
-
-        #region Helpers
-
         private T ExecuteRequest<T>(HttpRequest httpRequest, TimeSpan cacheDuration)
             where T : class
         {
@@ -610,8 +579,12 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
                 "d MMM yyyy",
             };
 
-            if (DateTime.TryParseExact(dateStr.Trim(), formats, CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var result))
+            if (DateTime.TryParseExact(
+                dateStr.Trim(),
+                formats,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var result))
             {
                 return result;
             }
@@ -640,7 +613,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
 
             var isbn13 = "978" + isbn10.Substring(0, 9);
             var sum = 0;
-            for (int i = 0; i < 12; i++)
+            for (var i = 0; i < 12; i++)
             {
                 var digit = isbn13[i] - '0';
                 sum += (i % 2 == 0) ? digit : digit * 3;
@@ -664,7 +637,5 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
 
             return null;
         }
-
-        #endregion
     }
 }

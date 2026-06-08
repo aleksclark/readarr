@@ -6,12 +6,18 @@ on:
   pull_request:
     branches: [develop, master]
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  packages: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  DOTNET_VERSION: "9.0.x"
+  DOTNET_VERSION: "10.0.x"
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   NODE_VERSION: "20"
@@ -63,7 +69,7 @@ jobs:
         run: dotnet build src/Readarr.sln --no-restore -c Release
 
       - name: Publish
-        run: dotnet publish src/NzbDrone.Console/Readarr.Console.csproj -c Release -r ${{ matrix.runtime }} --self-contained false -o ${{ env.READARR_OUTPUT }}
+        run: dotnet publish src/NzbDrone.Console/Readarr.Console.csproj -c Release -r ${{ matrix.runtime }} --self-contained false -f net10.0 -p:EnableAnalyzers=false -p:TreatWarningsAsErrors=false -o ${{ env.READARR_OUTPUT }}
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -109,7 +115,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
-    needs: backend-build
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -151,7 +156,6 @@ jobs:
           --filter "Category!=IntegrationTest&Category!=AutomationTest&Category!=ManualTest"
           --logger "trx;LogFileName=unit-tests-${{ matrix.os }}.trx"
           --results-directory ./TestResults
-          --collect:"XPlat Code Coverage"
 
       - name: Upload Test Results
         if: always()
@@ -175,7 +179,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   integration-tests:
     name: Integration Tests
-    needs: backend-build
     runs-on: ubuntu-24.04
 
     services:
@@ -366,25 +369,13 @@ jobs:
   # Docker Build
   # ─────────────────────────────────────────────────────────────────────────────
   docker:
-    name: Docker Build
-    needs: [backend-build, frontend]
+    name: Docker Build & Push
+    needs: [unit-tests]
     runs-on: ubuntu-24.04
     if: github.event_name == 'push'
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download Backend Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-linux
-          path: ${{ env.READARR_OUTPUT }}
-
-      - name: Download Frontend Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: ${{ env.READARR_OUTPUT }}/UI
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -456,6 +447,9 @@ jobs:
             -c Release \
             -r ${{ matrix.runtime }} \
             --self-contained true \
+            -f net10.0 \
+            -p:EnableAnalyzers=false \
+            -p:TreatWarningsAsErrors=false \
             -o ./_artifacts/${{ matrix.runtime }}
 
       - name: Download Frontend

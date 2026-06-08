@@ -21,9 +21,15 @@ namespace NzbDrone.Common.Composition
         {
             var toLoad = assemblies.ToList();
             toLoad.Add("Readarr.Common");
-            toLoad.Add(OsInfo.IsWindows ? "Readarr.Windows" : "Readarr.Mono");
 
+            // Platform-specific assemblies — only load if present
+            var platformAssembly = OsInfo.IsWindows ? "Readarr.Windows" : "Readarr.Linux";
             var startupPath = AppDomain.CurrentDomain.BaseDirectory;
+            var platformPath = Path.Combine(startupPath, $"{platformAssembly}.dll");
+            if (File.Exists(platformPath))
+            {
+                toLoad.Add(platformAssembly);
+            }
 
             return toLoad.Select(x =>
                 AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(startupPath, $"{x}.dll")));

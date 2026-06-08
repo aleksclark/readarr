@@ -170,7 +170,7 @@ namespace NzbDrone.Test.Common.AutoMoq
 
             if (OsInfo.IsNotWindows)
             {
-                assemblyName = "Readarr.Mono";
+                assemblyName = "Readarr.Linux";
             }
 
             var types = Assembly.Load(assemblyName).GetTypes();

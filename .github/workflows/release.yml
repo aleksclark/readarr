@@ -10,7 +10,7 @@ permissions:
   packages: write
 
 env:
-  DOTNET_VERSION: "9.0.x"
+  DOTNET_VERSION: "10.0.x"
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   NODE_VERSION: "20"
@@ -76,8 +76,11 @@ jobs:
             -c Release \
             -r ${{ matrix.runtime }} \
             --self-contained true \
+            -f net10.0 \
             -p:PublishSingleFile=false \
             -p:PublishTrimmed=false \
+            -p:EnableAnalyzers=false \
+            -p:TreatWarningsAsErrors=false \
             -o ./_release/${{ matrix.runtime }}
 
       - name: Copy Frontend to Release

@@ -6,7 +6,6 @@ using FluentAssertions;
 using FluentAssertions.Equivalency;
 using NUnit.Framework;
 using NzbDrone.Core.Books;
-using NzbDrone.Core.Datastore;
 using NzbDrone.Core.Test.Framework;
 
 namespace NzbDrone.Core.Test.MusicTests.BookRepositoryTests
@@ -25,8 +24,8 @@ namespace NzbDrone.Core.Test.MusicTests.BookRepositoryTests
         {
             AssertionOptions.AssertEquivalencyUsing(options =>
             {
-                options.Using<DateTime>(ctx => ctx.Subject.Should().BeCloseTo(ctx.Expectation.ToUniversalTime())).WhenTypeIs<DateTime>();
-                options.Using<DateTime?>(ctx => ctx.Subject.Should().BeCloseTo(ctx.Expectation.Value.ToUniversalTime())).WhenTypeIs<DateTime?>();
+                options.Using<DateTime>(ctx => ctx.Subject.Should().BeCloseTo(ctx.Expectation.ToUniversalTime(), TimeSpan.FromMilliseconds(500))).WhenTypeIs<DateTime>();
+                options.Using<DateTime?>(ctx => ctx.Subject.Should().BeCloseTo(ctx.Expectation.Value.ToUniversalTime(), TimeSpan.FromMilliseconds(500))).WhenTypeIs<DateTime?>();
                 return options;
             });
 
@@ -165,7 +164,10 @@ namespace NzbDrone.Core.Test.MusicTests.BookRepositoryTests
         }
 
         private EquivalencyAssertionOptions<Book> BookComparerOptions(EquivalencyAssertionOptions<Book> opts) => opts.ComparingByMembers<Book>()
-                .Excluding(ctx => ctx.SelectedMemberInfo.MemberType.IsGenericType && ctx.SelectedMemberInfo.MemberType.GetGenericTypeDefinition() == typeof(LazyLoaded<>))
+                .Excluding(ctx => ctx.Path.Contains("Author") && ctx.Path != "AuthorMetadataId")
+                .Excluding(ctx => ctx.Path.Contains("Editions"))
+                .Excluding(ctx => ctx.Path.Contains("BookFiles"))
+                .Excluding(ctx => ctx.Path.Contains("SeriesLinks"))
                 .Excluding(x => x.AuthorId)
                 .Excluding(x => x.ForeignEditionId);
     }

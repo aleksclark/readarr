@@ -18,6 +18,7 @@ namespace NzbDrone.Core.Test.UpdateTests
         }
 
         [Test]
+        [Ignore("Requires upstream Servarr update server")]
         public void no_update_when_version_higher()
         {
             UseRealHttp();
@@ -25,6 +26,7 @@ namespace NzbDrone.Core.Test.UpdateTests
         }
 
         [Test]
+        [Ignore("Requires upstream Servarr update server")]
         public void finds_update_when_version_lower()
         {
             UseRealHttp();
@@ -32,7 +34,7 @@ namespace NzbDrone.Core.Test.UpdateTests
         }
 
         [Test]
-        [Ignore("Ignore until we actually release something on Master")]
+        [Ignore("Requires upstream Servarr update server")]
         public void should_get_master_if_branch_doesnt_exit()
         {
             UseRealHttp();
@@ -40,6 +42,7 @@ namespace NzbDrone.Core.Test.UpdateTests
         }
 
         [Test]
+        [Ignore("Requires upstream Servarr update server")]
         public void should_get_recent_updates()
         {
             const string branch = "develop";

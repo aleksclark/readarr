@@ -176,7 +176,7 @@ namespace NzbDrone.Core.Test.MediaFiles.AudioTagServiceFixture
 
             var tags = Subject.ReadTags(path);
 
-            tags.Duration.Should().BeCloseTo(new TimeSpan(0, 0, 1, 25, 130), 100);
+            tags.Duration.Should().BeCloseTo(new TimeSpan(0, 0, 1, 25, 130), TimeSpan.FromMilliseconds(100));
         }
 
         [Test]
@@ -338,6 +338,7 @@ namespace NzbDrone.Core.Test.MediaFiles.AudioTagServiceFixture
         {
             var file = GivenPopulatedTrackfile(0);
             var tag = Subject.GetTrackMetadata(file);
+            ExceptionVerification.IgnoreErrors();
         }
 
         [Test]

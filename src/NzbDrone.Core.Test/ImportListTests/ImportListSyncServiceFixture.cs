@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FizzWare.NBuilder;
@@ -7,7 +8,6 @@ using NzbDrone.Core.Books;
 using NzbDrone.Core.ImportLists;
 using NzbDrone.Core.ImportLists.Exclusions;
 using NzbDrone.Core.MetadataSource;
-
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Test.Framework;
 
@@ -34,22 +34,25 @@ namespace NzbDrone.Core.Test.ImportListTests
                 .Returns(_importListReports);
 
             Mocker.GetMock<ISearchForNewBook>()
-                .Setup(v => v.Search(It.IsAny<string>()))
-                .Returns(new List<SearchJsonResource>());
+                .Setup(v => v.SearchForNewBook(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
+                .Returns(new List<Book>());
 
-            Mocker.GetMock<IOpenLibraryProxy>()
-                .Setup(v => v.GetBookInfo(It.IsAny<string>(), true))
-                .Returns<string, bool>((id, useCache) => Builder<Book>
-                .CreateNew()
-                .With(b => b.AuthorMetadata = Builder<AuthorMetadata>.CreateNew().Build())
-                .With(b => b.ForeignBookId = "4321")
-                .With(b => b.Editions = Builder<Edition>
-                    .CreateListOfSize(1)
-                    .TheFirst(1)
-                    .With(e => e.ForeignEditionId = id.ToString())
-                    .With(e => e.Monitored = true)
-                    .BuildList())
-                .Build());
+            Mocker.GetMock<IProvideBookInfo>()
+                .Setup(v => v.GetBookInfo(It.IsAny<string>()))
+                .Returns<string>(id => new Tuple<string, Book, List<AuthorMetadata>>(
+                    "4321",
+                    Builder<Book>
+                        .CreateNew()
+                        .With(b => b.AuthorMetadata = Builder<AuthorMetadata>.CreateNew().Build())
+                        .With(b => b.ForeignBookId = "4321")
+                        .With(b => b.Editions = Builder<Edition>
+                            .CreateListOfSize(1)
+                            .TheFirst(1)
+                            .With(e => e.ForeignEditionId = id.ToString())
+                            .With(e => e.Monitored = true)
+                            .BuildList())
+                        .Build(),
+                    new List<AuthorMetadata>()));
 
             Mocker.GetMock<IImportListFactory>()
                 .Setup(v => v.Get(It.IsAny<int>()))
@@ -157,7 +160,7 @@ namespace NzbDrone.Core.Test.ImportListTests
             Subject.Execute(new ImportListSyncCommand());
 
             Mocker.GetMock<ISearchForNewBook>()
-                .Verify(v => v.Search(It.IsAny<string>()), Times.Once());
+                .Verify(v => v.SearchForNewBook(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()), Times.Once());
         }
 
         [Test]
@@ -177,7 +180,7 @@ namespace NzbDrone.Core.Test.ImportListTests
             Subject.Execute(new ImportListSyncCommand());
 
             Mocker.GetMock<ISearchForNewBook>()
-                .Verify(v => v.Search(It.IsAny<string>()), Times.Once());
+                .Verify(v => v.SearchForNewBook(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()), Times.Once());
         }
 
         [Test]
@@ -188,7 +191,7 @@ namespace NzbDrone.Core.Test.ImportListTests
             Subject.Execute(new ImportListSyncCommand());
 
             Mocker.GetMock<ISearchForNewBook>()
-                .Verify(v => v.Search(It.IsAny<string>()), Times.Never());
+                .Verify(v => v.SearchForNewBook(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()), Times.Never());
         }
 
         [Test]
@@ -200,10 +203,10 @@ namespace NzbDrone.Core.Test.ImportListTests
             Subject.Execute(new ImportListSyncCommand());
 
             Mocker.GetMock<ISearchForNewBook>()
-                .Verify(v => v.Search(It.IsAny<string>()), Times.Never());
+                .Verify(v => v.SearchForNewBook(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()), Times.Never());
 
             Mocker.GetMock<ISearchForNewBook>()
-                .Verify(v => v.Search(It.IsAny<string>()), Times.Never());
+                .Verify(v => v.SearchForNewBook(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()), Times.Never());
         }
 
         [Test]

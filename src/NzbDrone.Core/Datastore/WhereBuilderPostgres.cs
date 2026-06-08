@@ -286,25 +286,45 @@ namespace NzbDrone.Core.Datastore
         {
             // Fish out the list and the item to compare
             // It's in a different form for arrays and Lists
+            // .NET 10+: arrays use MemoryExtensions.Contains(ReadOnlySpan<T>, T, IEqualityComparer<T>)
             var list = body.Object;
             Expression item;
 
             if (list != null)
             {
-                // Generic collection
+                // Generic collection (e.g. List<T>.Contains(item))
                 item = body.Arguments[0];
+            }
+            else if (body.Method.Name == "Contains" && body.Arguments.Count >= 2)
+            {
+                // Static method: Enumerable.Contains(source, item) or
+                // MemoryExtensions.Contains(span, item, comparer)
+                if (body.Arguments[0].Type.IsGenericType &&
+                    body.Arguments[0].Type.GetGenericTypeDefinition() == typeof(ReadOnlySpan<>))
+                {
+                    // .NET 10+ MemoryExtensions path: unwrap the span back to array
+                    // Arg[0] is a call to convert array -> ReadOnlySpan, Arg[1] is item
+                    var spanArg = body.Arguments[0];
+                    if (spanArg is MethodCallExpression spanCall && spanCall.Arguments.Count > 0)
+                    {
+                        list = spanCall.Arguments[0];
+                    }
+                    else
+                    {
+                        list = spanArg;
+                    }
+
+                    item = body.Arguments[1];
+                }
+                else
+                {
+                    list = body.Arguments[0];
+                    item = body.Arguments[1];
+                }
             }
             else
             {
-                // Static method
-                // Must be Enumerable.Contains(source, item)
-                if (body.Method.DeclaringType != typeof(Enumerable) || body.Arguments.Count != 2)
-                {
-                    throw new NotSupportedException("Unexpected form of Enumerable.Contains");
-                }
-
-                list = body.Arguments[0];
-                item = body.Arguments[1];
+                throw new NotSupportedException("Unexpected form of Enumerable.Contains");
             }
 
             _sb.Append('(');

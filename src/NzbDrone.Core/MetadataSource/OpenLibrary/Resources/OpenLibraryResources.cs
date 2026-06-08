@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -13,7 +12,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary.Resources
         public int Start { get; set; }
 
         [JsonPropertyName("docs")]
-        public List<OpenLibrarySearchDoc> Docs { get; set; } = new();
+        public List<OpenLibrarySearchDoc> Docs { get; set; } = new ();
     }
 
     public class OpenLibrarySearchDoc
@@ -375,7 +374,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary.Resources
         public int Size { get; set; }
 
         [JsonPropertyName("entries")]
-        public List<OpenLibraryWorkResource> Entries { get; set; } = new();
+        public List<OpenLibraryWorkResource> Entries { get; set; } = new ();
     }
 
     public class OpenLibraryEditionsResponse
@@ -384,6 +383,6 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary.Resources
         public int Size { get; set; }
 
         [JsonPropertyName("entries")]
-        public List<OpenLibraryEditionResource> Entries { get; set; } = new();
+        public List<OpenLibraryEditionResource> Entries { get; set; } = new ();
     }
 }

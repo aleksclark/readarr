@@ -3,8 +3,8 @@ using System.Linq;
 using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Books;
-using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.MetadataSource;
+using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.MediaFiles.BookImport.Identification
 {
@@ -249,24 +249,21 @@ namespace NzbDrone.Core.MediaFiles.BookImport.Identification
             if (metadataIds.Count == 1 &&
                 metadataIds[0].IsNotNullOrWhiteSpace())
             {
-                if (int.TryParse(metadataIds[0], out var id))
+                _logger.Trace($"Searching by metadata id {metadataIds[0]}");
+
+                try
                 {
-                    _logger.Trace($"Searching by metadata id {id}");
+                    remoteBooks = _bookSearchService.SearchByOpenLibraryWorkId(metadataIds[0], true);
+                }
+                catch (MetadataSourceException e)
+                {
+                    _logger.Info(e, "Skipping ID search due to Metadata Source Error");
+                    remoteBooks = new List<Book>();
+                }
 
-                    try
-                    {
-                        remoteBooks = _bookSearchService.SearchByOpenLibraryWorkId(id, true);
-                    }
-                    catch (MetadataSourceException e)
-                    {
-                        _logger.Info(e, "Skipping ID search due to Metadata Source Error");
-                        remoteBooks = new List<Book>();
-                    }
-
-                    foreach (var candidate in ToCandidates(remoteBooks, seenCandidates, idOverrides))
-                    {
-                        yield return candidate;
-                    }
+                foreach (var candidate in ToCandidates(remoteBooks, seenCandidates, idOverrides))
+                {
+                    yield return candidate;
                 }
             }
 
