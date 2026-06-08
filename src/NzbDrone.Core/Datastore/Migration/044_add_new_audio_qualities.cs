@@ -44,8 +44,10 @@ namespace NzbDrone.Core.Datastore.Migration
                 }
 
                 var updatedItems = JsonConvert.SerializeObject(items);
-                conn.Execute("UPDATE \"QualityProfiles\" SET \"Items\" = @Items WHERE \"Id\" = @Id",
-                    new { Items = updatedItems, profile.Id }, transaction: tran);
+                conn.Execute(
+                    "UPDATE \"QualityProfiles\" SET \"Items\" = @Items WHERE \"Id\" = @Id",
+                    new { Items = updatedItems, profile.Id },
+                    transaction: tran);
             }
         }
 

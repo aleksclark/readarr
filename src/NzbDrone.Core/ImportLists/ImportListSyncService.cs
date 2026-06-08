@@ -12,7 +12,6 @@ using NzbDrone.Core.IndexerSearch;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.MetadataSource;
-using NzbDrone.Core.MetadataSource;
 using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.ImportLists
@@ -24,7 +23,6 @@ namespace NzbDrone.Core.ImportLists
         private readonly IFetchAndParseImportList _listFetcherAndParser;
         private readonly IProvideBookInfo _bookInfoProxy;
         private readonly ISearchForNewBook _bookSearchService;
-        private readonly IProvideBookInfo _bookInfoProxy;
         private readonly IAuthorService _authorService;
         private readonly IBookService _bookService;
         private readonly IEditionService _editionService;
@@ -39,7 +37,6 @@ namespace NzbDrone.Core.ImportLists
                                      IFetchAndParseImportList listFetcherAndParser,
                                      IProvideBookInfo bookInfoProxy,
                                      ISearchForNewBook bookSearchService,
-                                     IProvideBookInfo bookInfoProxy,
                                      IAuthorService authorService,
                                      IBookService bookService,
                                      IEditionService editionService,
@@ -54,7 +51,6 @@ namespace NzbDrone.Core.ImportLists
             _listFetcherAndParser = listFetcherAndParser;
             _bookInfoProxy = bookInfoProxy;
             _bookSearchService = bookSearchService;
-            _bookInfoProxy = bookInfoProxy;
             _authorService = authorService;
             _bookService = bookService;
             _editionService = editionService;
@@ -220,8 +216,8 @@ namespace NzbDrone.Core.ImportLists
                 report.BookMetadataId = mappedBook.ForeignBookId.ToString();
                 report.Book = mappedBook.Title;
                 report.Author ??= mappedBook.AuthorMetadata?.Value?.Name ?? "";
-                report.AuthorMetadataId ??= mappedBook.Author.Id.ToString();
-                report.EditionMetadataId = mappedBook.BookId.ToString();
+                report.AuthorMetadataId ??= mappedBook.AuthorMetadataId.ToString();
+                report.EditionMetadataId = mappedBook.ForeignEditionId;
             }
         }
 
@@ -365,7 +361,7 @@ namespace NzbDrone.Core.ImportLists
             _logger.Trace($"Mapped {report.Author} to [{mappedBook.AuthorMetadata?.Value?.Name ?? ""}]");
 
             report.Author = mappedBook.AuthorMetadata?.Value?.Name ?? "";
-            report.AuthorMetadataId = mappedBook.Author.Id.ToString();
+            report.AuthorMetadataId = mappedBook.AuthorMetadataId.ToString();
         }
 
         private Author ProcessAuthorReport(ImportListDefinition importList, ImportListItemInfo report, List<ImportListExclusion> listExclusions, List<Author> authorsToAdd)

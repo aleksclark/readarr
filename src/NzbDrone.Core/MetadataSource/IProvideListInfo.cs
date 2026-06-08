@@ -6,7 +6,7 @@ namespace NzbDrone.Core.MetadataSource
     {
         public int Id { get; set; }
         public string Title { get; set; }
-        public List<ListBookItem> Books { get; set; } = new();
+        public List<ListBookItem> Books { get; set; } = new ();
         public int TotalItems { get; set; }
         public int CurrentPage { get; set; }
     }

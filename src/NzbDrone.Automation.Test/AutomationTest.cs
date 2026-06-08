@@ -11,7 +11,6 @@ using NzbDrone.Common.EnvironmentInfo;
 using NzbDrone.Test.Common;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
-using OpenQA.Selenium.Remote;
 
 namespace NzbDrone.Automation.Test
 {
@@ -20,7 +19,7 @@ namespace NzbDrone.Automation.Test
     public abstract class AutomationTest
     {
         private NzbDroneRunner _runner;
-        protected RemoteWebDriver driver;
+        protected ChromeDriver driver;
 
         public AutomationTest()
         {
@@ -70,7 +69,7 @@ namespace NzbDrone.Automation.Test
             try
             {
                 var image = (driver as ITakesScreenshot).GetScreenshot();
-                image.SaveAsFile($"./{name}_test_screenshot.png", ScreenshotImageFormat.Png);
+                image.SaveAsFile($"./{name}_test_screenshot.png");
             }
             catch (Exception ex)
             {

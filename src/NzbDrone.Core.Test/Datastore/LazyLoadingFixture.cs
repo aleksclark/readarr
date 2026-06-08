@@ -79,13 +79,13 @@ namespace NzbDrone.Core.Test.Datastore
             var db = Mocker.Resolve<IDatabase>();
             var tracks = db.Query<BookFile>(new SqlBuilder(db.DatabaseType)).ToList();
 
-            Assert.IsNotEmpty(tracks);
+            Assert.That(tracks, Is.Not.Empty);
             foreach (var track in tracks)
             {
-                Assert.IsFalse(track.Author.IsLoaded);
-                Assert.IsNotNull(track.Author.Value);
-                Assert.IsTrue(track.Author.IsLoaded);
-                Assert.IsTrue(track.Author.Value.Metadata.IsLoaded);
+                Assert.That(track.Author.IsLoaded, Is.False);
+                Assert.That(track.Author.Value, Is.Not.Null);
+                Assert.That(track.Author.IsLoaded, Is.True);
+                Assert.That(track.Author.Value.Metadata.IsLoaded, Is.True);
             }
         }
 
@@ -97,9 +97,9 @@ namespace NzbDrone.Core.Test.Datastore
 
             foreach (var track in tracks)
             {
-                Assert.IsFalse(track.BookFiles.IsLoaded);
-                Assert.IsNotNull(track.BookFiles.Value);
-                Assert.IsTrue(track.BookFiles.IsLoaded);
+                Assert.That(track.BookFiles.IsLoaded, Is.False);
+                Assert.That(track.BookFiles.Value, Is.Not.Null);
+                Assert.That(track.BookFiles.IsLoaded, Is.True);
             }
         }
 
@@ -114,12 +114,12 @@ namespace NzbDrone.Core.Test.Datastore
                                                   .Join<Book, Author>((book, author) => book.AuthorMetadataId == author.AuthorMetadataId)
                                                   .Join<Author, AuthorMetadata>((a, m) => a.AuthorMetadataId == m.Id));
 
-            Assert.IsNotEmpty(files);
+            Assert.That(files, Is.Not.Empty);
             foreach (var file in files)
             {
-                Assert.IsTrue(file.Edition.IsLoaded);
-                Assert.IsTrue(file.Author.IsLoaded);
-                Assert.IsTrue(file.Author.Value.Metadata.IsLoaded);
+                Assert.That(file.Edition.IsLoaded, Is.True);
+                Assert.That(file.Author.IsLoaded, Is.True);
+                Assert.That(file.Author.Value.Metadata.IsLoaded, Is.True);
             }
         }
     }
