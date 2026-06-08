@@ -100,10 +100,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TestProject)'!='true'">
-    <!-- Annotates .NET assemblies with repository information including SHA -->
-    <!-- Sentry uses this to link directly to GitHub at the exact version/file/line -->
-    <!-- This is built-in on .NET 8 and can be removed once the project is updated -->
-    <PackageReference Include="Microsoft.SourceLink.GitHub" />
+    <!-- Source Link is built-in on .NET 8+ -->
   </ItemGroup>
 
   <!-- Sentry specific configuration: Only in Release mode -->
