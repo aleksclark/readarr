@@ -1,0 +1,157 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # Fast build check — fails fast if code doesn't compile
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Restore
+        run: dotnet restore src/Readarr.sln
+
+      - name: Build (with analyzers)
+        run: dotnet build src/Readarr.sln --no-restore -c Release -p:EnableAnalyzers=true -warnaserror
+
+  # Quick unit test run
+  quick-tests:
+    name: Quick Tests
+    needs: build-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Build
+        run: dotnet build src/Readarr.sln -c Release
+
+      - name: Run Core Unit Tests
+        run: >
+          dotnet test src/NzbDrone.Core.Test/Readarr.Core.Test.csproj
+          --no-build -c Release
+          --filter "Category!=IntegrationTest&Category!=AutomationTest&Category!=ManualTest"
+          --logger "trx;LogFileName=core-tests.trx"
+          --results-directory ./TestResults
+
+      - name: Run Common Unit Tests
+        run: >
+          dotnet test src/NzbDrone.Common.Test/Readarr.Common.Test.csproj
+          --no-build -c Release
+          --filter "Category!=IntegrationTest&Category!=AutomationTest&Category!=ManualTest"
+          --logger "trx;LogFileName=common-tests.trx"
+          --results-directory ./TestResults
+
+      - name: Run Host Unit Tests
+        run: >
+          dotnet test src/NzbDrone.Host.Test/Readarr.Host.Test.csproj
+          --no-build -c Release
+          --filter "Category!=IntegrationTest&Category!=AutomationTest&Category!=ManualTest"
+          --logger "trx;LogFileName=host-tests.trx"
+          --results-directory ./TestResults
+
+      - name: Test Report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: PR Test Results
+          path: ./TestResults/*.trx
+          reporter: dotnet-trx
+          fail-on-error: true
+
+  # Frontend lint check
+  frontend-lint:
+    name: Frontend Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+
+      - name: Install
+        run: yarn install --frozen-lockfile
+
+      - name: ESLint
+        run: yarn lint
+
+  # Migration safety check
+  migration-check:
+    name: Migration Safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Migration Numbers
+        run: |
+          # Ensure migration numbers are sequential and don't conflict
+          migrations=$(find src/NzbDrone.Core/Datastore/Migration -name "[0-9]*.cs" ! -path "*Framework*" | sort)
+          prev_num=0
+          for f in $migrations; do
+            num=$(basename "$f" | grep -oP '^\d+')
+            num=$((10#$num))  # Remove leading zeros
+            if [ "$num" -le "$prev_num" ]; then
+              echo "❌ Migration $f has number $num which conflicts with previous $prev_num"
+              exit 1
+            fi
+            prev_num=$num
+          done
+          echo "✅ All migration numbers are sequential (1-$prev_num)"
+
+      - name: Check for New Migrations in PR
+        if: github.event_name == 'pull_request'
+        run: |
+          new_migrations=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep "Datastore/Migration/[0-9]" || true)
+          if [ -n "$new_migrations" ]; then
+            echo "📋 New migrations in this PR:"
+            echo "$new_migrations"
+            echo ""
+            echo "⚠️ Please ensure migrations are backward-compatible and tested"
+          else
+            echo "ℹ️ No new migrations in this PR"
+          fi

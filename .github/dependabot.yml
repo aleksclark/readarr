@@ -1,12 +1,76 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for more information:
-# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
-# https://containers.dev/guide/dependabot
-
 version: 2
 updates:
- - package-ecosystem: "devcontainers"
-   directory: "/"
-   schedule:
-     interval: weekly
+  - package-ecosystem: "nuget"
+    directory: "/src"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+      testing:
+        patterns:
+          - "NUnit*"
+          - "Moq"
+          - "FluentAssertions"
+          - "NBuilder"
+          - "coverlet*"
+          - "Microsoft.NET.Test.Sdk"
+      servarr:
+        patterns:
+          - "Servarr.*"
+          - "System.Data.SQLite*"
+          - "TagLibSharp*"
+          - "Mono.*"
+    ignore:
+      # Don't auto-update these — require manual review
+      - dependency-name: "RestSharp"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-redux"
+          - "react-router*"
+          - "redux*"
+          - "connected-react-router"
+      babel:
+        patterns:
+          - "@babel/*"
+          - "babel-*"
+      eslint:
+        patterns:
+          - "eslint*"
+          - "@typescript-eslint/*"
+      webpack:
+        patterns:
+          - "webpack*"
+          - "*-loader"
+          - "*-webpack-plugin"
+      fortawesome:
+        patterns:
+          - "@fortawesome/*"
+      sentry:
+        patterns:
+          - "@sentry/*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -1,0 +1,154 @@
+name: Security & Dependencies
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+    branches: [develop]
+  schedule:
+    # Run weekly on Monday at 9am UTC
+    - cron: "0 9 * * 1"
+
+permissions:
+  security-events: write
+  contents: read
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # .NET Vulnerability Scan
+  # ─────────────────────────────────────────────────────────────────────────────
+  nuget-audit:
+    name: NuGet Vulnerability Audit
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore with Audit
+        run: dotnet restore src/Readarr.sln
+
+      - name: NuGet Audit
+        run: |
+          dotnet list src/Readarr.sln package --vulnerable --include-transitive 2>&1 | tee vuln-report.txt
+          if grep -q "has the following vulnerable packages" vuln-report.txt; then
+            echo "::warning::Vulnerable NuGet packages detected"
+            # Don't fail — just warn. Critical vulns would need manual review.
+          fi
+
+      - name: Check for Deprecated Packages
+        run: |
+          dotnet list src/Readarr.sln package --deprecated 2>&1 | tee deprecated-report.txt
+          if grep -q "has the following deprecated packages" deprecated-report.txt; then
+            echo "::warning::Deprecated NuGet packages detected"
+          fi
+
+      - name: Upload Audit Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-audit
+          path: |
+            vuln-report.txt
+            deprecated-report.txt
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # npm Audit (frontend)
+  # ─────────────────────────────────────────────────────────────────────────────
+  npm-audit:
+    name: Frontend Dependency Audit
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Yarn Audit
+        run: |
+          yarn audit --level moderate 2>&1 | tee yarn-audit.txt || true
+          # yarn audit exits non-zero if it finds issues
+          if grep -q "high\|critical" yarn-audit.txt; then
+            echo "::warning::High/critical npm vulnerabilities found"
+          fi
+
+      - name: Upload Audit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          path: yarn-audit.txt
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CodeQL Analysis
+  # ─────────────────────────────────────────────────────────────────────────────
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp, javascript
+
+      - name: Build
+        run: dotnet build src/Readarr.sln -c Release
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # License Compliance
+  # ─────────────────────────────────────────────────────────────────────────────
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install License Tool
+        run: dotnet tool install -g dotnet-project-licenses
+
+      - name: Check NuGet Licenses
+        run: |
+          dotnet-project-licenses -i src/Readarr.sln --allowed-license-types \
+            "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MS-PL;Zlib;Unlicense;CC0-1.0;LGPL-2.1-only;LGPL-3.0-only" \
+            2>&1 | tee license-report.txt || true
+
+      - name: Upload License Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: license-report.txt
+          retention-days: 30

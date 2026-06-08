@@ -1,0 +1,84 @@
+name: Code Coverage
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  coverage:
+    name: Generate Coverage Report
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Restore & Build
+        run: dotnet build src/Readarr.sln -c Release
+
+      - name: Run Tests with Coverage
+        run: >
+          dotnet test src/Readarr.sln
+          --no-build
+          -c Release
+          --filter "Category!=IntegrationTest&Category!=AutomationTest&Category!=ManualTest"
+          --collect:"XPlat Code Coverage"
+          --settings src/coverlet.runsettings
+          --results-directory ./CoverageResults
+
+      - name: Install ReportGenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate Coverage Report
+        run: |
+          reportgenerator \
+            -reports:"CoverageResults/**/coverage.cobertura.xml" \
+            -targetdir:CoverageReport \
+            -reporttypes:"Html;Cobertura;MarkdownSummaryGithub"
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: CoverageReport
+          retention-days: 14
+
+      - name: Coverage Summary
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: CoverageReport/SummaryGithub.md
+
+      - name: Check Coverage Threshold
+        run: |
+          # Extract line coverage percentage from cobertura
+          LINE_RATE=$(grep -oP 'line-rate="\K[^"]+' CoverageReport/Cobertura.xml | head -1)
+          COVERAGE=$(echo "$LINE_RATE * 100" | bc -l | cut -d. -f1)
+          echo "Line coverage: ${COVERAGE}%"
+
+          # Fail if coverage drops below threshold
+          THRESHOLD=40
+          if [ "$COVERAGE" -lt "$THRESHOLD" ]; then
+            echo "❌ Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+            exit 1
+          fi
+          echo "✅ Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"

@@ -1,0 +1,216 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  NODE_VERSION: "20"
+
+jobs:
+  build-release:
+    name: Build Release (${{ matrix.runtime }})
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        runtime:
+          - linux-x64
+          - linux-arm64
+          - linux-musl-x64
+          - osx-x64
+          - osx-arm64
+          - win-x64
+          - win-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+
+      - name: Set Version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Update Assembly Version
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          sed -i "s/<AssemblyVersion>[0-9.*]\+<\/AssemblyVersion>/<AssemblyVersion>${VERSION}<\/AssemblyVersion>/g" src/Directory.Build.props
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Build Frontend
+        run: |
+          yarn install --frozen-lockfile
+          yarn build
+
+      - name: Publish Backend
+        run: |
+          dotnet publish src/NzbDrone.Console/Readarr.Console.csproj \
+            -c Release \
+            -r ${{ matrix.runtime }} \
+            --self-contained true \
+            -p:PublishSingleFile=false \
+            -p:PublishTrimmed=false \
+            -o ./_release/${{ matrix.runtime }}
+
+      - name: Copy Frontend to Release
+        run: cp -r _output/UI ./_release/${{ matrix.runtime }}/UI
+
+      - name: Create Archive
+        run: |
+          cd _release
+          if [[ "${{ matrix.runtime }}" == win-* ]]; then
+            zip -r ../Readarr.${{ steps.version.outputs.version }}.${{ matrix.runtime }}.zip ${{ matrix.runtime }}
+          else
+            chmod +x ${{ matrix.runtime }}/Readarr
+            tar -czf ../Readarr.${{ steps.version.outputs.version }}.${{ matrix.runtime }}.tar.gz ${{ matrix.runtime }}
+          fi
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.runtime }}
+          path: Readarr.${{ steps.version.outputs.version }}.${{ matrix.runtime }}.*
+          retention-days: 5
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: ./release-assets
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --oneline --no-decorate HEAD~20..HEAD)
+          else
+            CHANGELOG=$(git log --oneline --no-decorate ${PREV_TAG}..HEAD)
+          fi
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Readarr ${{ github.ref_name }}
+          body: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Downloads
+
+            | Platform | Architecture | File |
+            |----------|-------------|------|
+            | Linux | x64 | `Readarr.*.linux-x64.tar.gz` |
+            | Linux | ARM64 | `Readarr.*.linux-arm64.tar.gz` |
+            | Linux (musl) | x64 | `Readarr.*.linux-musl-x64.tar.gz` |
+            | macOS | x64 (Intel) | `Readarr.*.osx-x64.tar.gz` |
+            | macOS | ARM64 (Apple Silicon) | `Readarr.*.osx-arm64.tar.gz` |
+            | Windows | x64 | `Readarr.*.win-x64.zip` |
+            | Windows | ARM64 | `Readarr.*.win-arm64.zip` |
+
+            ## Docker
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ```
+          files: ./release-assets/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+
+  docker-release:
+    name: Docker Release
+    needs: build-release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux x64 Build
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux-x64
+          path: ./docker-context
+
+      - name: Extract for Docker
+        run: |
+          cd docker-context
+          tar -xzf Readarr.*.linux-x64.tar.gz
+          mv linux-x64 app
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker-context
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -1,0 +1,499 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, master, revitalize]
+  pull_request:
+    branches: [develop, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  NODE_VERSION: "20"
+  READARR_OUTPUT: _output
+  READARR_TESTS: _tests
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Backend Build + Analysis
+  # ─────────────────────────────────────────────────────────────────────────────
+  backend-build:
+    name: Build Backend (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+            runtime: linux-x64
+          - os: windows
+            runner: windows-2022
+            runtime: win-x64
+          - os: macos
+            runner: macos-14
+            runtime: osx-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ matrix.os }}-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-${{ matrix.os }}-
+
+      - name: Restore
+        run: dotnet restore src/Readarr.sln
+
+      - name: Build
+        run: dotnet build src/Readarr.sln --no-restore -c Release -p:RuntimeIdentifier=${{ matrix.runtime }}
+
+      - name: Publish
+        run: dotnet publish src/NzbDrone.Console/Readarr.Console.csproj -c Release -r ${{ matrix.runtime }} --self-contained false -o ${{ env.READARR_OUTPUT }}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: ${{ env.READARR_OUTPUT }}
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Code Analysis (StyleCop + formatting)
+  # ─────────────────────────────────────────────────────────────────────────────
+  code-analysis:
+    name: Code Analysis
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Restore
+        run: dotnet restore src/Readarr.sln
+
+      - name: Build with Analyzers
+        run: dotnet build src/Readarr.sln --no-restore -c Release -p:EnableAnalyzers=true -warnaserror
+
+      - name: Check formatting
+        run: dotnet format src/Readarr.sln --verify-no-changes --no-restore
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Unit Tests
+  # ─────────────────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests (${{ matrix.os }})
+    needs: backend-build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+          - os: windows
+            runner: windows-2022
+          - os: macos
+            runner: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ matrix.os }}-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-${{ matrix.os }}-
+
+      - name: Restore
+        run: dotnet restore src/Readarr.sln
+
+      - name: Build Tests
+        run: dotnet build src/Readarr.sln --no-restore -c Release
+
+      - name: Run Unit Tests
+        run: >
+          dotnet test src/Readarr.sln
+          --no-build
+          -c Release
+          --filter "Category!=IntegrationTest&Category!=AutomationTest&Category!=ManualTest"
+          --logger "trx;LogFileName=unit-tests-${{ matrix.os }}.trx"
+          --results-directory ./TestResults
+          --collect:"XPlat Code Coverage"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-unit-${{ matrix.os }}
+          path: ./TestResults
+          retention-days: 7
+
+      - name: Test Report
+        if: always() && matrix.os == 'linux'
+        uses: dorny/test-reporter@v1
+        with:
+          name: Unit Tests (${{ matrix.os }})
+          path: ./TestResults/*.trx
+          reporter: dotnet-trx
+          fail-on-error: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Integration Tests (Linux only — requires running instance)
+  # ─────────────────────────────────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    needs: backend-build
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: readarr
+          POSTGRES_PASSWORD: readarr
+          POSTGRES_DB: readarr_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Restore & Build
+        run: dotnet build src/Readarr.sln -c Release
+
+      - name: Run Integration Tests (SQLite)
+        run: >
+          dotnet test src/Readarr.sln
+          --no-build
+          -c Release
+          --filter "Category=IntegrationTest&Category!=ManualTest"
+          --logger "trx;LogFileName=integration-sqlite.trx"
+          --results-directory ./TestResults
+        env:
+          Readarr__Postgres__Host: ""
+
+      - name: Run Integration Tests (PostgreSQL)
+        run: >
+          dotnet test src/Readarr.sln
+          --no-build
+          -c Release
+          --filter "Category=IntegrationTest&Category!=ManualTest"
+          --logger "trx;LogFileName=integration-postgres.trx"
+          --results-directory ./TestResults
+        env:
+          Readarr__Postgres__Host: localhost
+          Readarr__Postgres__Port: "5432"
+          Readarr__Postgres__User: readarr
+          Readarr__Postgres__Password: readarr
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-integration
+          path: ./TestResults
+          retention-days: 7
+
+      - name: Test Report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Integration Tests
+          path: ./TestResults/*.trx
+          reporter: dotnet-trx
+          fail-on-error: false
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Frontend Build + Lint
+  # ─────────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend Build & Lint
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: ESLint
+        run: yarn lint
+
+      - name: Stylelint (Linux)
+        run: yarn stylelint-linux
+
+      - name: TypeScript Check
+        run: yarn tsc --noEmit -p frontend/tsconfig.json
+        continue-on-error: true
+
+      - name: Build Frontend
+        run: yarn build
+
+      - name: Upload Frontend Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: _output/UI
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Open Library API Smoke Tests
+  # ─────────────────────────────────────────────────────────────────────────────
+  api-smoke-tests:
+    name: Open Library API Smoke Tests
+    runs-on: ubuntu-24.04
+    # Only run on push, not PRs (avoid hammering external APIs on every PR update)
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Test Search Endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://openlibrary.org/search.json?q=test&limit=1&fields=key,title")
+          if [ "$response" != "200" ]; then
+            echo "❌ Search API returned $response"
+            exit 1
+          fi
+          echo "✅ Search API: $response"
+
+      - name: Test Works Endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://openlibrary.org/works/OL45804W.json")
+          if [ "$response" != "200" ]; then
+            echo "❌ Works API returned $response"
+            exit 1
+          fi
+          echo "✅ Works API: $response"
+
+      - name: Test Authors Endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://openlibrary.org/authors/OL23919A.json")
+          if [ "$response" != "200" ]; then
+            echo "❌ Authors API returned $response"
+            exit 1
+          fi
+          echo "✅ Authors API: $response"
+
+      - name: Test Editions Endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://openlibrary.org/works/OL45804W/editions.json?limit=1")
+          if [ "$response" != "200" ]; then
+            echo "❌ Editions API returned $response"
+            exit 1
+          fi
+          echo "✅ Editions API: $response"
+
+      - name: Test ISBN Endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://openlibrary.org/isbn/9780140328721.json")
+          if [ "$response" != "200" ] && [ "$response" != "301" ] && [ "$response" != "302" ]; then
+            echo "❌ ISBN API returned $response"
+            exit 1
+          fi
+          echo "✅ ISBN API: $response"
+
+      - name: Test Covers Endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://covers.openlibrary.org/b/id/240727-S.jpg")
+          if [ "$response" != "200" ]; then
+            echo "❌ Covers API returned $response"
+            exit 1
+          fi
+          echo "✅ Covers API: $response"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Docker Build
+  # ─────────────────────────────────────────────────────────────────────────────
+  docker:
+    name: Docker Build
+    needs: [backend-build, frontend]
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Backend Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-linux
+          path: ${{ env.READARR_OUTPUT }}
+
+      - name: Download Frontend Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: ${{ env.READARR_OUTPUT }}/UI
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Package (multi-platform archives)
+  # ─────────────────────────────────────────────────────────────────────────────
+  package:
+    name: Package (${{ matrix.runtime }})
+    needs: [unit-tests, frontend]
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/master'
+    strategy:
+      matrix:
+        runtime:
+          - linux-x64
+          - linux-arm64
+          - linux-musl-x64
+          - osx-x64
+          - osx-arm64
+          - win-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-linux-${{ hashFiles('src/Directory.Packages.props', 'src/**/*.csproj') }}
+          restore-keys: nuget-linux-
+
+      - name: Publish
+        run: |
+          dotnet publish src/NzbDrone.Console/Readarr.Console.csproj \
+            -c Release \
+            -r ${{ matrix.runtime }} \
+            --self-contained true \
+            -o ./_artifacts/${{ matrix.runtime }}
+
+      - name: Download Frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: ./_artifacts/${{ matrix.runtime }}/UI
+
+      - name: Create Archive
+        run: |
+          cd _artifacts
+          if [[ "${{ matrix.runtime }}" == win-* ]]; then
+            zip -r ../Readarr.${{ matrix.runtime }}.zip ${{ matrix.runtime }}
+          else
+            tar -czf ../Readarr.${{ matrix.runtime }}.tar.gz ${{ matrix.runtime }}
+          fi
+
+      - name: Upload Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.runtime }}
+          path: Readarr.${{ matrix.runtime }}.*
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CI Status Gate
+  # ─────────────────────────────────────────────────────────────────────────────
+  ci-status:
+    name: CI Status
+    if: always()
+    needs: [backend-build, code-analysis, unit-tests, frontend]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check CI Status
+        run: |
+          results=("${{ needs.backend-build.result }}" "${{ needs.code-analysis.result }}" "${{ needs.unit-tests.result }}" "${{ needs.frontend.result }}")
+          for result in "${results[@]}"; do
+            if [[ "$result" == "failure" ]]; then
+              echo "❌ One or more required jobs failed"
+              exit 1
+            fi
+          done
+          echo "✅ All required CI checks passed"
