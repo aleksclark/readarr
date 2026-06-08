@@ -322,7 +322,7 @@ namespace NzbDrone.Core.MediaCover
 
         private HttpHeader GetServerHeaders(string url)
         {
-            // Goodreads doesn't allow a HEAD, so request a zero byte range instead
+            // Open Library doesn't always allow HEAD, so request a zero byte range instead
             var request = new HttpRequest(url)
             {
                 AllowAutoRedirect = true,

@@ -379,19 +379,19 @@ namespace NzbDrone.Core.Books
                 var authors = _authorService.GetAllAuthors().OrderBy(c => c.Name).ToList();
                 var authorIds = authors.Select(x => x.Id).ToList();
 
-                var updatedGoodreadsAuthors = new HashSet<string>();
+                var updatedAuthors = new HashSet<string>();
 
                 if (message.LastExecutionTime.HasValue && message.LastExecutionTime.Value.AddDays(14) > DateTime.UtcNow)
                 {
-                    updatedGoodreadsAuthors = _authorInfo.GetChangedAuthors(message.LastStartTime.Value);
+                    updatedAuthors = _authorInfo.GetChangedAuthors(message.LastStartTime.Value);
                 }
 
                 foreach (var author in authors)
                 {
                     var manualTrigger = message.Trigger == CommandTrigger.Manual;
 
-                    if ((updatedGoodreadsAuthors == null && _checkIfAuthorShouldBeRefreshed.ShouldRefresh(author)) ||
-                        (updatedGoodreadsAuthors != null && updatedGoodreadsAuthors.Contains(author.ForeignAuthorId)) ||
+                    if ((updatedAuthors == null && _checkIfAuthorShouldBeRefreshed.ShouldRefresh(author)) ||
+                        (updatedAuthors != null && updatedAuthors.Contains(author.ForeignAuthorId)) ||
                         manualTrigger)
                     {
                         try

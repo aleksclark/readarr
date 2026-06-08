@@ -18,7 +18,7 @@ namespace NzbDrone.Core.Parser.Model
         public string SeriesIndex { get; set; }
         public string Isbn { get; set; }
         public string Asin { get; set; }
-        public string GoodreadsId { get; set; }
+        public string MetadataId { get; set; }
         public string AuthorMBId { get; set; }
         public string BookMBId { get; set; }
         public string ReleaseMBId { get; set; }

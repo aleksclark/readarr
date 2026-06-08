@@ -18,7 +18,7 @@ namespace NzbDrone.Integration.Test.ApiTests
         }
 
         [Test]
-        public void lookup_new_author_by_goodreads_book_id()
+        public void lookup_new_author_by_openlibrary_work_id()
         {
             var author = Author.Lookup("edition:2");
 

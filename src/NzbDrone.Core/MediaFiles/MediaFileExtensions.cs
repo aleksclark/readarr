@@ -31,14 +31,15 @@ namespace NzbDrone.Core.MediaFiles
                 { ".mp2", Quality.MP3 },
                 { ".mp3", Quality.MP3 },
                 { ".wma", Quality.MP3 },
-                { ".m4a", Quality.MP3 },
-                { ".m4p", Quality.MP3 },
+                { ".m4a", Quality.AAC },
+                { ".m4p", Quality.AAC },
                 { ".m4b", Quality.M4B },
-                { ".aac", Quality.MP3 },
-                { ".mp4a", Quality.MP3 },
-                { ".ogg", Quality.MP3 },
-                { ".oga", Quality.MP3 },
-                { ".vorbis", Quality.MP3 },
+                { ".aac", Quality.AAC },
+                { ".mp4a", Quality.AAC },
+                { ".ogg", Quality.OGG },
+                { ".oga", Quality.OGG },
+                { ".opus", Quality.OPUS },
+                { ".vorbis", Quality.OGG },
             };
         }
 
