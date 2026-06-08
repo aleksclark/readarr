@@ -12,7 +12,7 @@ using NzbDrone.Core.IndexerSearch;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.MetadataSource;
-using NzbDrone.Core.MetadataSource.OpenLibrary;
+using NzbDrone.Core.MetadataSource;
 using NzbDrone.Core.Parser.Model;
 
 namespace NzbDrone.Core.ImportLists
@@ -22,7 +22,7 @@ namespace NzbDrone.Core.ImportLists
         private readonly IImportListFactory _importListFactory;
         private readonly IImportListExclusionService _importListExclusionService;
         private readonly IFetchAndParseImportList _listFetcherAndParser;
-        private readonly IOpenLibraryProxy _openLibraryProxy;
+        private readonly IProvideBookInfo _bookInfoProxy;
         private readonly ISearchForNewBook _bookSearchService;
         private readonly IProvideBookInfo _bookInfoProxy;
         private readonly IAuthorService _authorService;
@@ -37,7 +37,7 @@ namespace NzbDrone.Core.ImportLists
         public ImportListSyncService(IImportListFactory importListFactory,
                                      IImportListExclusionService importListExclusionService,
                                      IFetchAndParseImportList listFetcherAndParser,
-                                     IOpenLibraryProxy openLibraryProxy,
+                                     IProvideBookInfo bookInfoProxy,
                                      ISearchForNewBook bookSearchService,
                                      IProvideBookInfo bookInfoProxy,
                                      IAuthorService authorService,
@@ -52,7 +52,7 @@ namespace NzbDrone.Core.ImportLists
             _importListFactory = importListFactory;
             _importListExclusionService = importListExclusionService;
             _listFetcherAndParser = listFetcherAndParser;
-            _openLibraryProxy = openLibraryProxy;
+            _bookInfoProxy = bookInfoProxy;
             _bookSearchService = bookSearchService;
             _bookInfoProxy = bookInfoProxy;
             _authorService = authorService;
@@ -177,14 +177,19 @@ namespace NzbDrone.Core.ImportLists
 
                 try
                 {
-                    var remoteBook = _openLibraryProxy.GetEdition(report.EditionMetadataId);
+                    var bookInfo = _bookInfoProxy.GetBookInfo(report.EditionMetadataId);
+                    var remoteBook = bookInfo.Item2;
 
                     _logger.Trace($"Mapped {report.EditionMetadataId} to [{remoteBook.ForeignBookId}] {remoteBook.Title}");
 
                     report.BookMetadataId = remoteBook.ForeignBookId;
                     report.Book = remoteBook.Title;
-                    report.Author ??= remoteBook.AuthorMetadata.Value.Name;
-                    report.AuthorMetadataId ??= remoteBook.AuthorMetadata.Value.ForeignAuthorId;
+
+                    if (bookInfo.Item3 != null && bookInfo.Item3.Count > 0)
+                    {
+                        report.Author ??= bookInfo.Item3[0].Name;
+                        report.AuthorMetadataId ??= bookInfo.Item3[0].ForeignAuthorId;
+                    }
                 }
                 catch (BookNotFoundException)
                 {
@@ -202,7 +207,7 @@ namespace NzbDrone.Core.ImportLists
             }
             else
             {
-                var mappedBook = _bookSearchService.SearchForNewBook($"{report.Book} {report.Author}").FirstOrDefault();
+                var mappedBook = _bookSearchService.SearchForNewBook(report.Book ?? "", report.Author ?? "").FirstOrDefault();
 
                 if (mappedBook == null)
                 {
@@ -210,11 +215,11 @@ namespace NzbDrone.Core.ImportLists
                     return;
                 }
 
-                _logger.Trace($"Mapped Book {report.Book} by Author {report.Author} to [{mappedBook.WorkId}] {mappedBook.BookTitleBare}");
+                _logger.Trace($"Mapped Book {report.Book} by Author {report.Author} to [{mappedBook.ForeignBookId}] {mappedBook.Title}");
 
-                report.BookMetadataId = mappedBook.WorkId.ToString();
-                report.Book = mappedBook.BookTitleBare;
-                report.Author ??= mappedBook.Author.Name;
+                report.BookMetadataId = mappedBook.ForeignBookId.ToString();
+                report.Book = mappedBook.Title;
+                report.Author ??= mappedBook.AuthorMetadata?.Value?.Name ?? "";
                 report.AuthorMetadataId ??= mappedBook.Author.Id.ToString();
                 report.EditionMetadataId = mappedBook.BookId.ToString();
             }
@@ -349,7 +354,7 @@ namespace NzbDrone.Core.ImportLists
 
         private void MapAuthorReport(ImportListItemInfo report)
         {
-            var mappedBook = _bookSearchService.SearchForNewBook(report.Author).FirstOrDefault();
+            var mappedBook = _bookSearchService.SearchForNewBook(report.Author ?? "", "").FirstOrDefault();
 
             if (mappedBook == null)
             {
@@ -357,9 +362,9 @@ namespace NzbDrone.Core.ImportLists
                 return;
             }
 
-            _logger.Trace($"Mapped {report.Author} to [{mappedBook.Author.Name}]");
+            _logger.Trace($"Mapped {report.Author} to [{mappedBook.AuthorMetadata?.Value?.Name ?? ""}]");
 
-            report.Author = mappedBook.Author.Name;
+            report.Author = mappedBook.AuthorMetadata?.Value?.Name ?? "";
             report.AuthorMetadataId = mappedBook.Author.Id.ToString();
         }
 
