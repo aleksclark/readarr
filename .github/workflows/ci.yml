@@ -156,7 +156,6 @@ jobs:
           --filter "Category!=IntegrationTest&Category!=AutomationTest&Category!=ManualTest"
           --logger "trx;LogFileName=unit-tests-${{ matrix.os }}.trx"
           --results-directory ./TestResults
-          --collect:"XPlat Code Coverage"
 
       - name: Upload Test Results
         if: always()
