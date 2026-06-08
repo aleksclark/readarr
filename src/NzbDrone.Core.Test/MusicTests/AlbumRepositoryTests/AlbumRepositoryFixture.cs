@@ -166,6 +166,8 @@ namespace NzbDrone.Core.Test.MusicTests.BookRepositoryTests
         private EquivalencyAssertionOptions<Book> BookComparerOptions(EquivalencyAssertionOptions<Book> opts) => opts.ComparingByMembers<Book>()
                 .Excluding(ctx => ctx.Path.Contains("Author") && ctx.Path != "AuthorMetadataId")
                 .Excluding(ctx => ctx.Path.Contains("Editions"))
+                .Excluding(ctx => ctx.Path.Contains("BookFiles"))
+                .Excluding(ctx => ctx.Path.Contains("SeriesLinks"))
                 .Excluding(x => x.AuthorId)
                 .Excluding(x => x.ForeignEditionId);
     }

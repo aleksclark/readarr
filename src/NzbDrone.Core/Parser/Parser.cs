@@ -356,10 +356,16 @@ namespace NzbDrone.Core.Parser
                 simpleTitle = CleanTorrentSuffixRegex.Replace(simpleTitle);
 
                 var bestBook = books
-                    .OrderByDescending(x => simpleTitle.FuzzyMatch(x.Editions.Value.Single(x => x.Monitored).Title, wordDelimiters: WordDelimiters))
-                    .First()
-                    .Editions.Value
-                    .Single(x => x.Monitored);
+                    .Where(x => x.Editions.Value.Any(e => e.Monitored))
+                    .OrderByDescending(x => simpleTitle.FuzzyMatch(x.Editions.Value.First(e => e.Monitored).Title, wordDelimiters: WordDelimiters))
+                    .FirstOrDefault();
+
+                if (bestBook == null)
+                {
+                    return null;
+                }
+
+                var bestEdition = bestBook.Editions.Value.First(x => x.Monitored);
 
                 var foundAuthor = GetTitleFuzzy(simpleTitle, authorName, out var remainder);
 
@@ -368,11 +374,11 @@ namespace NzbDrone.Core.Parser
                     foundAuthor = GetTitleFuzzy(simpleTitle, authorName.ToLastFirst(), out remainder);
                 }
 
-                var foundBook = GetTitleFuzzy(remainder, bestBook.Title, out _);
+                var foundBook = GetTitleFuzzy(remainder, bestEdition.Title, out _);
 
                 if (foundBook == null)
                 {
-                    foundBook = GetTitleFuzzy(remainder, bestBook.Title.SplitBookTitle(authorName).Item1, out _);
+                    foundBook = GetTitleFuzzy(remainder, bestEdition.Title.SplitBookTitle(authorName).Item1, out _);
                 }
 
                 Logger.Trace($"Found {foundAuthor} - {foundBook} with fuzzy parser");

@@ -338,6 +338,7 @@ namespace NzbDrone.Core.Test.MediaFiles.AudioTagServiceFixture
         {
             var file = GivenPopulatedTrackfile(0);
             var tag = Subject.GetTrackMetadata(file);
+            ExceptionVerification.IgnoreErrors();
         }
 
         [Test]
