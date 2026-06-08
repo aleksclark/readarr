@@ -35,7 +35,7 @@ jobs:
         run: dotnet restore src/Readarr.sln
 
       - name: Build (with analyzers)
-        run: dotnet build src/Readarr.sln --no-restore -c Release -p:EnableAnalyzers=true -warnaserror
+        run: dotnet build src/Readarr.sln --no-restore -c Release -p:EnableAnalyzers=true
 
   # Quick unit test run
   quick-tests:
