@@ -10,5 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\NzbDrone.Host\Readarr.Host.csproj" />
+    <ProjectReference Include="..\NzbDrone.Linux\Readarr.Linux.csproj" Condition="!$(RuntimeIdentifier.StartsWith('win'))" />
   </ItemGroup>
 </Project>

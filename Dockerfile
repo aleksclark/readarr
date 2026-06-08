@@ -4,7 +4,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: Build backend
 # ─────────────────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS backend-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS backend-build
 
 WORKDIR /src
 COPY src/ ./
@@ -31,7 +31,7 @@ RUN yarn install --frozen-lockfile && \
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: Runtime
 # ─────────────────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine
 
 # Install runtime dependencies for media processing
 RUN apk add --no-cache \
