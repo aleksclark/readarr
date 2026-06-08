@@ -10,7 +10,7 @@ namespace NzbDrone.Core.Datastore.Migration
     [Migration(044)]
     public class add_new_audio_qualities : NzbDroneMigrationBase
     {
-        protected override void Up()
+        protected override void MainDbUpgrade()
         {
             // Add new audio quality definitions (AAC=14, OGG=15, OPUS=16) to all existing profiles
             Execute.WithConnection(AddNewQualitiesToProfiles);

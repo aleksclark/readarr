@@ -6,7 +6,7 @@ namespace NzbDrone.Core.Datastore.Migration
     [Migration(041)]
     public class add_open_library_id : NzbDroneMigrationBase
     {
-        protected override void Up()
+        protected override void MainDbUpgrade()
         {
             // Add OpenLibrary ID tracking to authors and books for cross-reference
             Alter.Table("AuthorMetadata").AddColumn("OpenLibraryId").AsString().Nullable();

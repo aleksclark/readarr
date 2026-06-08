@@ -6,7 +6,7 @@ namespace NzbDrone.Core.Datastore.Migration
     [Migration(042)]
     public class remove_goodreads_settings : NzbDroneMigrationBase
     {
-        protected override void Up()
+        protected override void MainDbUpgrade()
         {
             // Remove Goodreads OAuth tokens and API keys from config
             Execute.Sql("DELETE FROM \"Config\" WHERE \"Key\" LIKE '%goodreads%'");

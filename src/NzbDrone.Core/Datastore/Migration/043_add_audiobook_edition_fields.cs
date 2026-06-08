@@ -6,7 +6,7 @@ namespace NzbDrone.Core.Datastore.Migration
     [Migration(043)]
     public class add_audiobook_edition_fields : NzbDroneMigrationBase
     {
-        protected override void Up()
+        protected override void MainDbUpgrade()
         {
             // EditionFormat: 0=Unknown, 1=Text, 2=Audio
             Alter.Table("Editions").AddColumn("EditionFormat").AsInt32().WithDefaultValue(0);
