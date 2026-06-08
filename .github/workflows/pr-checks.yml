@@ -130,18 +130,19 @@ jobs:
       - name: Check Migration Numbers
         run: |
           # Ensure migration numbers are sequential and don't conflict
-          migrations=$(find src/NzbDrone.Core/Datastore/Migration -name "[0-9]*.cs" ! -path "*Framework*" | sort)
-          prev_num=0
+          migrations=$(find src/NzbDrone.Core/Datastore/Migration -maxdepth 1 -name "[0-9]*.cs" | sort)
+          prev_num=-1
           for f in $migrations; do
-            num=$(basename "$f" | grep -oP '^\d+')
-            num=$((10#$num))  # Remove leading zeros
+            filename=$(basename "$f")
+            num=$(echo "$filename" | grep -oE '^[0-9]+' | sed 's/^0*//')
+            num=${num:-0}
             if [ "$num" -le "$prev_num" ]; then
               echo "❌ Migration $f has number $num which conflicts with previous $prev_num"
               exit 1
             fi
             prev_num=$num
           done
-          echo "✅ All migration numbers are sequential (1-$prev_num)"
+          echo "✅ All migration numbers are sequential (up to $prev_num)"
 
       - name: Check for New Migrations in PR
         if: github.event_name == 'pull_request'
