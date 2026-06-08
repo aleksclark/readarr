@@ -14,6 +14,7 @@ RUN dotnet restore Readarr.sln && \
       -c Release \
       -r linux-musl-x64 \
       --self-contained false \
+      -f net10.0 \
       -o /app
 
 # ─────────────────────────────────────────────────────────────────────────────

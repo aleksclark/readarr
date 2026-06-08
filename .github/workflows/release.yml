@@ -76,6 +76,7 @@ jobs:
             -c Release \
             -r ${{ matrix.runtime }} \
             --self-contained true \
+            -f net10.0 \
             -p:PublishSingleFile=false \
             -p:PublishTrimmed=false \
             -o ./_release/${{ matrix.runtime }}
