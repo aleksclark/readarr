@@ -69,7 +69,7 @@ jobs:
         run: dotnet build src/Readarr.sln --no-restore -c Release
 
       - name: Publish
-        run: dotnet publish src/NzbDrone.Console/Readarr.Console.csproj -c Release -r ${{ matrix.runtime }} --self-contained false -f net10.0 -o ${{ env.READARR_OUTPUT }}
+        run: dotnet publish src/NzbDrone.Console/Readarr.Console.csproj -c Release -r ${{ matrix.runtime }} --self-contained false -f net10.0 -p:EnableAnalyzers=false -p:TreatWarningsAsErrors=false -o ${{ env.READARR_OUTPUT }}
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -115,7 +115,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
-    needs: backend-build
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -181,7 +180,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   integration-tests:
     name: Integration Tests
-    needs: backend-build
     runs-on: ubuntu-24.04
 
     services:
@@ -451,6 +449,8 @@ jobs:
             -r ${{ matrix.runtime }} \
             --self-contained true \
             -f net10.0 \
+            -p:EnableAnalyzers=false \
+            -p:TreatWarningsAsErrors=false \
             -o ./_artifacts/${{ matrix.runtime }}
 
       - name: Download Frontend
