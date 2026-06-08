@@ -42,6 +42,7 @@ namespace NzbDrone.Core.MediaFiles.BookImport
         public bool IncludeExisting { get; set; }
         public bool AddNewAuthors { get; set; }
         public bool KeepAllEditions { get; set; }
+        public bool IsCollection { get; set; }
     }
 
     public class ImportDecisionMaker : IMakeImportDecision
@@ -162,6 +163,7 @@ namespace NzbDrone.Core.MediaFiles.BookImport
                 // in case it's a new author
                 EnsureData(release);
                 release.NewDownload = config.NewDownload;
+                release.IsCollection = config.IsCollection;
 
                 var releaseDecision = GetDecision(release, itemInfo.DownloadClientItem);
 

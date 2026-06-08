@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NLog;
 using NzbDrone.Common.Disk;
 using NzbDrone.Common.EnvironmentInfo;
 using NzbDrone.Core.Books;
+using NzbDrone.Core.Configuration;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.MediaFiles.BookImport;
@@ -32,9 +34,15 @@ namespace NzbDrone.Core.MediaFiles
         private readonly IParsingService _parsingService;
         private readonly IMakeImportDecision _importDecisionMaker;
         private readonly IImportApprovedBooks _importApprovedTracks;
+        private readonly IMetadataTagService _metadataTagService;
+        private readonly IConfigService _configService;
         private readonly IEventAggregator _eventAggregator;
         private readonly IRuntimeInfo _runtimeInfo;
         private readonly Logger _logger;
+
+        private static readonly Regex CollectionFolderPattern = new Regex(
+            @"\b(Complete\s*Works|Discography|Collection|Anthology|Box\s*Set|Boxset|Omnibus|Collected|Complete\s*Series|Complete\s*Edition)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         public DownloadedBooksImportService(IDiskProvider diskProvider,
                                              IDiskScanService diskScanService,
@@ -42,6 +50,8 @@ namespace NzbDrone.Core.MediaFiles
                                              IParsingService parsingService,
                                              IMakeImportDecision importDecisionMaker,
                                              IImportApprovedBooks importApprovedTracks,
+                                             IMetadataTagService metadataTagService,
+                                             IConfigService configService,
                                              IEventAggregator eventAggregator,
                                              IRuntimeInfo runtimeInfo,
                                              Logger logger)
@@ -52,6 +62,8 @@ namespace NzbDrone.Core.MediaFiles
             _parsingService = parsingService;
             _importDecisionMaker = importDecisionMaker;
             _importApprovedTracks = importApprovedTracks;
+            _metadataTagService = metadataTagService;
+            _configService = configService;
             _eventAggregator = eventAggregator;
             _runtimeInfo = runtimeInfo;
             _logger = logger;
@@ -207,6 +219,8 @@ namespace NzbDrone.Core.MediaFiles
                 }
             }
 
+            var isCollection = IsCollectionDownload(directoryInfo, audioFiles, out var collectionItemCount);
+
             var idOverrides = new IdentificationOverrides
             {
                 Author = author
@@ -222,13 +236,25 @@ namespace NzbDrone.Core.MediaFiles
                 NewDownload = true,
                 SingleRelease = false,
                 IncludeExisting = false,
-                AddNewAuthors = false
+                AddNewAuthors = false,
+                IsCollection = isCollection
             };
+
+            if (isCollection)
+            {
+                _logger.Info("Detected collection download with {0} items", collectionItemCount);
+
+                // For collections, default to Copy mode to preserve the source
+                if (importMode == ImportMode.Auto)
+                {
+                    importMode = ImportMode.Copy;
+                }
+            }
 
             var decisions = _importDecisionMaker.GetImportDecisions(audioFiles, idOverrides, idInfo, idConfig);
             var importResults = _importApprovedTracks.Import(decisions, true, downloadClientItem, importMode);
 
-            if (importMode == ImportMode.Auto)
+            if (!isCollection && importMode == ImportMode.Auto)
             {
                 importMode = (downloadClientItem == null || downloadClientItem.CanMoveFiles) ? ImportMode.Move : ImportMode.Copy;
             }
@@ -320,6 +346,139 @@ namespace NzbDrone.Core.MediaFiles
                            .Replace("_FAILED_", "");
 
             return folder;
+        }
+
+        private bool IsCollectionDownload(IDirectoryInfo directoryInfo, List<IFileInfo> audioFiles, out int itemCount)
+        {
+            itemCount = 0;
+            var threshold = _configService.CollectionDetectionThreshold;
+
+            // Check 1: Folder name patterns suggesting a collection
+            if (CollectionFolderPattern.IsMatch(directoryInfo.Name))
+            {
+                _logger.Debug("Folder name '{0}' matches collection pattern", directoryInfo.Name);
+
+                // Count items for reporting - use text files + audio subdirs as the count
+                var textFileCount = audioFiles.Count(f => MediaFileExtensions.TextExtensions.Contains(Path.GetExtension(f.FullName)));
+                var audioDirCount = CountSubdirectoriesWithAudioContent(directoryInfo);
+                itemCount = Math.Max(textFileCount, audioDirCount);
+
+                if (itemCount < threshold)
+                {
+                    itemCount = threshold;
+                }
+
+                return true;
+            }
+
+            // Check 2: Number of text book files (epub, pdf, mobi, azw3, kepub)
+            var textFiles = audioFiles.Where(f => MediaFileExtensions.TextExtensions.Contains(Path.GetExtension(f.FullName))).ToList();
+
+            if (textFiles.Count >= threshold)
+            {
+                itemCount = textFiles.Count;
+                _logger.Debug("Found {0} text book files in folder, meets collection threshold of {1}", textFiles.Count, threshold);
+                return true;
+            }
+
+            // Check 3: Number of subdirectories containing audio files
+            var audioSubdirCount = CountSubdirectoriesWithAudioContent(directoryInfo);
+
+            if (audioSubdirCount >= threshold)
+            {
+                // Check 4: Tag consistency - if all audio files share the same book title, it's NOT a collection
+                // (it's likely a single audiobook split across multiple disc/part folders)
+                if (HasConsistentBookTitles(audioFiles))
+                {
+                    _logger.Debug("Audio files across {0} subdirectories all share the same book title - not a collection", audioSubdirCount);
+                    return false;
+                }
+
+                itemCount = audioSubdirCount;
+                _logger.Debug("Found {0} subdirectories with audio content, meets collection threshold of {1}", audioSubdirCount, threshold);
+                return true;
+            }
+
+            return false;
+        }
+
+        private int CountSubdirectoriesWithAudioContent(IDirectoryInfo directoryInfo)
+        {
+            var count = 0;
+
+            try
+            {
+                var subdirectories = _diskProvider.GetDirectoryInfos(directoryInfo.FullName);
+
+                foreach (var subdir in subdirectories)
+                {
+                    try
+                    {
+                        var files = _diskProvider.GetFiles(subdir.FullName, false);
+                        var hasAudioFiles = files.Any(f => MediaFileExtensions.AudioExtensions.Contains(Path.GetExtension(f)));
+
+                        if (hasAudioFiles)
+                        {
+                            count++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Debug(ex, "Unable to check subdirectory for audio content: {0}", subdir.FullName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug(ex, "Unable to enumerate subdirectories: {0}", directoryInfo.FullName);
+            }
+
+            return count;
+        }
+
+        private bool HasConsistentBookTitles(List<IFileInfo> audioFiles)
+        {
+            var audioOnlyFiles = audioFiles
+                .Where(f => MediaFileExtensions.AudioExtensions.Contains(Path.GetExtension(f.FullName)))
+                .ToList();
+
+            if (!audioOnlyFiles.Any())
+            {
+                return false;
+            }
+
+            try
+            {
+                string firstTitle = null;
+
+                foreach (var file in audioOnlyFiles)
+                {
+                    var tagInfo = _metadataTagService.ReadTags(file);
+
+                    if (tagInfo == null || string.IsNullOrWhiteSpace(tagInfo.BookTitle))
+                    {
+                        continue;
+                    }
+
+                    if (firstTitle == null)
+                    {
+                        firstTitle = tagInfo.BookTitle;
+                    }
+                    else if (!string.Equals(firstTitle, tagInfo.BookTitle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Different book titles found - this IS a collection
+                        return false;
+                    }
+                }
+
+                // All audio files share the same title (or no titles found)
+                return firstTitle != null;
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug(ex, "Unable to read tags for collection consistency check");
+                return false;
+            }
         }
 
         private ImportResult FileIsLockedResult(string audioFile)

@@ -37,6 +37,7 @@ namespace NzbDrone.Core.Configuration
         bool WatchLibraryForChanges { get; set; }
         RescanAfterRefreshType RescanAfterRefresh { get; set; }
         AllowFingerprinting AllowFingerprinting { get; set; }
+        int CollectionDetectionThreshold { get; set; }
 
         //Permissions (Media Management)
         bool SetPermissionsLinux { get; set; }

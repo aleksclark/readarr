@@ -241,6 +241,13 @@ namespace NzbDrone.Core.Configuration
             set { SetValue("AllowFingerprinting", value); }
         }
 
+        public int CollectionDetectionThreshold
+        {
+            get { return GetValueInt("CollectionDetectionThreshold", 3); }
+
+            set { SetValue("CollectionDetectionThreshold", value); }
+        }
+
         public bool SetPermissionsLinux
         {
             get { return GetValueBoolean("SetPermissionsLinux", false); }
