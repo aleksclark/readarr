@@ -248,6 +248,13 @@ namespace NzbDrone.Core.Configuration
             set { SetValue("CollectionDetectionThreshold", value); }
         }
 
+        public CollectionImportMode CollectionImportMode
+        {
+            get { return GetValueEnum("CollectionImportMode", CollectionImportMode.Hardlink); }
+
+            set { SetValue("CollectionImportMode", value); }
+        }
+
         public bool SetPermissionsLinux
         {
             get { return GetValueBoolean("SetPermissionsLinux", false); }

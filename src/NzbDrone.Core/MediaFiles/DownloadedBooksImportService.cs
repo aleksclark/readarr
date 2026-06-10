@@ -244,22 +244,37 @@ namespace NzbDrone.Core.MediaFiles
             {
                 _logger.Info("Detected collection download with {0} items", collectionItemCount);
 
-                // For collections, default to Copy mode to preserve the source
+                // For collections, determine import mode from CollectionImportMode config
+                var collectionMode = _configService.CollectionImportMode;
+                _logger.Debug("Collection import mode configured as: {0}", collectionMode);
+
                 if (importMode == ImportMode.Auto)
                 {
-                    importMode = ImportMode.Copy;
+                    switch (collectionMode)
+                    {
+                        case CollectionImportMode.Move:
+                            importMode = ImportMode.Move;
+                            break;
+                        case CollectionImportMode.Copy:
+                        case CollectionImportMode.Hardlink:
+                        default:
+                            // Both Copy and Hardlink use ImportMode.Copy here;
+                            // the actual hardlink logic is handled downstream via CopyUsingHardlinks
+                            importMode = ImportMode.Copy;
+                            break;
+                    }
                 }
             }
 
             var decisions = _importDecisionMaker.GetImportDecisions(audioFiles, idOverrides, idInfo, idConfig);
-            var importResults = _importApprovedTracks.Import(decisions, true, downloadClientItem, importMode);
+            var importResults = _importApprovedTracks.Import(decisions, true, downloadClientItem, importMode, isCollection);
 
             if (!isCollection && importMode == ImportMode.Auto)
             {
                 importMode = (downloadClientItem == null || downloadClientItem.CanMoveFiles) ? ImportMode.Move : ImportMode.Copy;
             }
 
-            if (importMode == ImportMode.Move &&
+            if (!isCollection && importMode == ImportMode.Move &&
                 importResults.Any(i => i.Result == ImportResultType.Imported) &&
                 ShouldDeleteFolder(directoryInfo))
             {
@@ -273,6 +288,11 @@ namespace NzbDrone.Core.MediaFiles
                 {
                     _logger.Debug(e, "Unable to delete folder after importing: {0}", e.Message);
                 }
+            }
+
+            if (isCollection && importResults != null && importResults.Any(i => i.Result == ImportResultType.Imported))
+            {
+                _logger.Info("Collection import complete - source folder preserved for seeding: {0}", directoryInfo.FullName);
             }
 
             return importResults;
@@ -351,6 +371,12 @@ namespace NzbDrone.Core.MediaFiles
         private bool IsCollectionDownload(IDirectoryInfo directoryInfo, List<IFileInfo> audioFiles, out int itemCount)
         {
             itemCount = 0;
+
+            if (audioFiles == null || audioFiles.Count == 0)
+            {
+                return false;
+            }
+
             var threshold = _configService.CollectionDetectionThreshold;
 
             // Check 1: Folder name patterns suggesting a collection

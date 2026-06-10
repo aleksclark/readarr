@@ -9,6 +9,7 @@ using Moq;
 using NUnit.Framework;
 using NzbDrone.Common.Disk;
 using NzbDrone.Core.Books;
+using NzbDrone.Core.Configuration;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.MediaFiles;
@@ -41,8 +42,13 @@ namespace NzbDrone.Core.Test.MediaFiles
                   .Returns<string, IEnumerable<IFileInfo>>((b, s) => s.ToList());
 
             Mocker.GetMock<IImportApprovedBooks>()
-                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto))
+                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto, It.IsAny<bool>()))
                   .Returns(new List<ImportResult>());
+
+            // Prevent collection detection from triggering in standard import tests
+            Mocker.GetMock<IConfigService>()
+                  .Setup(s => s.CollectionDetectionThreshold)
+                  .Returns(999);
 
             var downloadItem = Builder<DownloadClientItem>.CreateNew()
                 .With(v => v.DownloadId = "sab1")
@@ -88,7 +94,7 @@ namespace NzbDrone.Core.Test.MediaFiles
                   .Returns(imported);
 
             Mocker.GetMock<IImportApprovedBooks>()
-                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), It.IsAny<bool>(), It.IsAny<DownloadClientItem>(), It.IsAny<ImportMode>()))
+                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), It.IsAny<bool>(), It.IsAny<DownloadClientItem>(), It.IsAny<ImportMode>(), It.IsAny<bool>()))
                   .Returns(imported.Select(i => new ImportResult(i)).ToList())
                   .Callback(() => WasImportedResponse());
         }
@@ -161,7 +167,7 @@ namespace NzbDrone.Core.Test.MediaFiles
         public void should_not_delete_folder_if_no_files_were_imported()
         {
             Mocker.GetMock<IImportApprovedBooks>()
-                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), false, null, ImportMode.Auto))
+                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), false, null, ImportMode.Auto, It.IsAny<bool>()))
                   .Returns(new List<ImportResult>());
 
             Subject.ProcessRootFolder(DiskProvider.GetDirectoryInfo(_droneFactory));
@@ -185,7 +191,7 @@ namespace NzbDrone.Core.Test.MediaFiles
                   .Returns(imported);
 
             Mocker.GetMock<IImportApprovedBooks>()
-                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto))
+                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto, It.IsAny<bool>()))
                   .Returns(imported.Select(i => new ImportResult(i)).ToList());
 
             Subject.ProcessRootFolder(DiskProvider.GetDirectoryInfo(_droneFactory));
@@ -242,7 +248,7 @@ namespace NzbDrone.Core.Test.MediaFiles
                   .Returns(imported);
 
             Mocker.GetMock<IImportApprovedBooks>()
-                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto))
+                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto, It.IsAny<bool>()))
                   .Returns(imported.Select(i => new ImportResult(i)).ToList());
 
             GivenAudioFiles(new[] { _audioFiles.First().Replace(".ext", ".rar") }, 15.Megabytes());
@@ -282,7 +288,7 @@ namespace NzbDrone.Core.Test.MediaFiles
                   .Returns(imported);
 
             Mocker.GetMock<IImportApprovedBooks>()
-                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto))
+                  .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto, It.IsAny<bool>()))
                   .Returns(new List<ImportResult>());
 
             Subject.ProcessRootFolder(DiskProvider.GetDirectoryInfo(_droneFactory));
@@ -337,13 +343,13 @@ namespace NzbDrone.Core.Test.MediaFiles
 
         private void VerifyNoImport()
         {
-            Mocker.GetMock<IImportApprovedBooks>().Verify(c => c.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto),
+            Mocker.GetMock<IImportApprovedBooks>().Verify(c => c.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto, It.IsAny<bool>()),
                 Times.Never());
         }
 
         private void VerifyImport()
         {
-            Mocker.GetMock<IImportApprovedBooks>().Verify(c => c.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto),
+            Mocker.GetMock<IImportApprovedBooks>().Verify(c => c.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto, It.IsAny<bool>()),
                 Times.Once());
         }
     }

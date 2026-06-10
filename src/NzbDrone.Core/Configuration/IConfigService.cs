@@ -38,6 +38,7 @@ namespace NzbDrone.Core.Configuration
         RescanAfterRefreshType RescanAfterRefresh { get; set; }
         AllowFingerprinting AllowFingerprinting { get; set; }
         int CollectionDetectionThreshold { get; set; }
+        CollectionImportMode CollectionImportMode { get; set; }
 
         //Permissions (Media Management)
         bool SetPermissionsLinux { get; set; }
