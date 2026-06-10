@@ -27,7 +27,7 @@ namespace NzbDrone.Core.MediaFiles.BookImport
 {
     public interface IImportApprovedBooks
     {
-        List<ImportResult> Import(List<ImportDecision<LocalBook>> decisions, bool replaceExisting, DownloadClientItem downloadClientItem = null, ImportMode importMode = ImportMode.Auto);
+        List<ImportResult> Import(List<ImportDecision<LocalBook>> decisions, bool replaceExisting, DownloadClientItem downloadClientItem = null, ImportMode importMode = ImportMode.Auto, bool isCollection = false);
     }
 
     public class ImportApprovedBooks : IImportApprovedBooks
@@ -83,7 +83,7 @@ namespace NzbDrone.Core.MediaFiles.BookImport
             _logger = logger;
         }
 
-        public List<ImportResult> Import(List<ImportDecision<LocalBook>> decisions, bool replaceExisting, DownloadClientItem downloadClientItem = null, ImportMode importMode = ImportMode.Auto)
+        public List<ImportResult> Import(List<ImportDecision<LocalBook>> decisions, bool replaceExisting, DownloadClientItem downloadClientItem = null, ImportMode importMode = ImportMode.Auto, bool isCollection = false)
         {
             var importResults = new List<ImportResult>();
             var allImportedTrackFiles = new List<BookFile>();
@@ -228,9 +228,19 @@ namespace NzbDrone.Core.MediaFiles.BookImport
                             break;
                     }
 
+                    // For collection imports, always use copy (never move/delete source files)
+                    if (isCollection && !copyOnly)
+                    {
+                        _logger.Debug("Collection import detected, forcing copy mode to preserve source files for seeding");
+                        copyOnly = true;
+                    }
+
                     if (!localTrack.ExistingFile)
                     {
                         bookFile.SceneName = GetSceneReleaseName(downloadClientItem);
+
+                        var transferMethod = copyOnly ? (isCollection ? "hardlink/copy (collection)" : "copy") : "move";
+                        _logger.Info("Importing book file using {0}: {1}", transferMethod, localTrack.Path);
 
                         var moveResult = _bookFileUpgrader.UpgradeBookFile(bookFile, localTrack, copyOnly);
                         oldFiles = moveResult.OldFiles;

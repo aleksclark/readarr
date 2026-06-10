@@ -78,20 +78,29 @@ namespace NzbDrone.Core.MediaFiles.BookImport.Identification
 
             var releases = GetLocalBookReleases(localTracks, config.SingleRelease);
 
-            var i = 0;
-            foreach (var localRelease in releases)
+            // If this is a collection, use enhanced identification
+            if (config.IsCollection)
             {
-                i++;
-                _logger.ProgressInfo($"Identifying book {i}/{releases.Count}");
-                _logger.Debug($"Identifying book files:\n{localRelease.LocalBooks.Select(x => x.Path).ConcatToString("\n")}");
+                _logger.Debug("Using collection-aware identification for {0} releases", releases.Count);
+                IdentifyCollection(releases, idOverrides, config);
+            }
+            else
+            {
+                var i = 0;
+                foreach (var localRelease in releases)
+                {
+                    i++;
+                    _logger.ProgressInfo($"Identifying book {i}/{releases.Count}");
+                    _logger.Debug($"Identifying book files:\n{localRelease.LocalBooks.Select(x => x.Path).ConcatToString("\n")}");
 
-                try
-                {
-                    IdentifyRelease(localRelease, idOverrides, config);
-                }
-                catch (Exception e)
-                {
-                    _logger.Error(e, "Error identifying release");
+                    try
+                    {
+                        IdentifyRelease(localRelease, idOverrides, config);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.Error(e, "Error identifying release");
+                    }
                 }
             }
 
@@ -100,6 +109,126 @@ namespace NzbDrone.Core.MediaFiles.BookImport.Identification
             _logger.Debug($"Track identification for {localTracks.Count} tracks took {watch.ElapsedMilliseconds}ms");
 
             return releases;
+        }
+
+        private void IdentifyCollection(List<LocalEdition> releases, IdentificationOverrides idOverrides, ImportDecisionMakerConfig config)
+        {
+            // For collections, determine if all files share the same author
+            var allBooks = releases.SelectMany(r => r.LocalBooks).ToList();
+            var authorHint = GetCollectionAuthorHint(allBooks);
+
+            List<CandidateEdition> collectionCandidates = null;
+            if (authorHint.IsNotNullOrWhiteSpace())
+            {
+                _logger.Debug("Collection appears to be from single author: '{0}', pre-fetching all editions", authorHint);
+                collectionCandidates = _candidateService.GetCollectionCandidates(authorHint);
+                _logger.Debug("Got {0} collection candidates for author '{1}'", collectionCandidates.Count, authorHint);
+            }
+
+            var i = 0;
+            foreach (var localRelease in releases)
+            {
+                i++;
+                _logger.ProgressInfo($"Identifying book {i}/{releases.Count} (collection mode)");
+                localRelease.IsCollection = true;
+
+                // Use enhanced filename parsing to improve metadata for each file in the release
+                EnhanceCollectionMetadata(localRelease, authorHint);
+
+                try
+                {
+                    if (collectionCandidates != null && collectionCandidates.Any())
+                    {
+                        IdentifyReleaseFromCollectionCandidates(localRelease, collectionCandidates, idOverrides, config);
+                    }
+                    else
+                    {
+                        // Fall back to standard identification
+                        IdentifyRelease(localRelease, idOverrides, config);
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.Error(e, "Error identifying collection release");
+                }
+            }
+        }
+
+        private string GetCollectionAuthorHint(List<LocalBook> localBooks)
+        {
+            // Check file metadata for consensus author
+            var authorTags = localBooks
+                .Where(x => x.FileTrackInfo?.Authors != null && x.FileTrackInfo.Authors.Any())
+                .Select(x => x.FileTrackInfo.Authors.FirstOrDefault())
+                .Where(x => x.IsNotNullOrWhiteSpace())
+                .ToList();
+
+            if (!authorTags.Any())
+            {
+                return null;
+            }
+
+            // Find the most common author
+            var mostCommonAuthor = authorTags
+                .GroupBy(x => x.ToLowerInvariant().Trim())
+                .OrderByDescending(x => x.Count())
+                .First();
+
+            // If at least half the files agree on author, use it as the hint
+            if (mostCommonAuthor.Count() >= (localBooks.Count / 2.0))
+            {
+                return mostCommonAuthor.First();
+            }
+
+            return null;
+        }
+
+        private void EnhanceCollectionMetadata(LocalEdition localRelease, string authorHint)
+        {
+            foreach (var localBook in localRelease.LocalBooks)
+            {
+                var fileName = Path.GetFileName(localBook.Path);
+                var parsedTitle = NzbDrone.Core.Parser.Parser.ParseCollectionBookTitle(fileName, authorHint);
+
+                if (parsedTitle.IsNotNullOrWhiteSpace() && localBook.FileTrackInfo != null)
+                {
+                    // If the file has no book title from tags, use the parsed one
+                    if (localBook.FileTrackInfo.BookTitle.IsNullOrWhiteSpace())
+                    {
+                        _logger.Trace("Setting book title from filename parsing: '{0}' for file '{1}'", parsedTitle, fileName);
+                        localBook.FileTrackInfo.BookTitle = parsedTitle;
+                    }
+
+                    // If the file has no author from tags but we have a hint, use it
+                    if (authorHint.IsNotNullOrWhiteSpace() && !localBook.FileTrackInfo.Authors.Any(a => a.IsNotNullOrWhiteSpace()))
+                    {
+                        _logger.Trace("Setting author from collection hint: '{0}' for file '{1}'", authorHint, fileName);
+                        localBook.FileTrackInfo.Authors = new List<string> { authorHint };
+                    }
+                }
+            }
+        }
+
+        private void IdentifyReleaseFromCollectionCandidates(LocalEdition localBookRelease, List<CandidateEdition> collectionCandidates, IdentificationOverrides idOverrides, ImportDecisionMakerConfig config)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            _logger.Debug("Identifying collection release from {0} pre-fetched candidates", collectionCandidates.Count);
+
+            // First try matching against the pre-fetched collection candidates
+            GetBestRelease(localBookRelease, collectionCandidates, new List<LocalBook>(), out var seenCandidate);
+
+            // If the match is not good enough, fall back to standard identification which includes remote search
+            if (!seenCandidate || localBookRelease.Distance.NormalizedDistance() > 0.15)
+            {
+                _logger.Debug("Collection candidate match not good enough (distance: {0}), falling back to standard identification",
+                    localBookRelease.Edition != null ? localBookRelease.Distance.NormalizedDistance().ToString("F3") : "N/A");
+                IdentifyRelease(localBookRelease, idOverrides, config);
+                return;
+            }
+
+            _logger.Debug($"Collection release identified in {watch.ElapsedMilliseconds}ms");
+            localBookRelease.PopulateMatch(config.KeepAllEditions);
         }
 
         private List<LocalBook> ToLocalTrack(IEnumerable<BookFile> trackfiles, LocalEdition localRelease)

@@ -907,5 +907,199 @@ namespace NzbDrone.Core.Parser
 
             throw new FormatException(string.Format("{0} isn't a number", value));
         }
+
+        // Collection filename parsing regex patterns
+        // Matches: '01 - Title', '01. Title', '01_Title'
+        private static readonly Regex CollectionSeriesNumberRegex = new Regex(
+            @"^\s*(?<number>\d{1,3})\s*[-._)\]]\s*(?<title>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Matches: 'Book 1 - Title', 'Book 01 - Title'
+        private static readonly Regex CollectionBookNumberRegex = new Regex(
+            @"^\s*(?:Book|Vol(?:ume)?|Part|Ch(?:apter)?)\s*\.?\s*(?<number>\d{1,3})\s*[-._:]\s*(?<title>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Matches: '#1 - Title', '#01 - Title'
+        private static readonly Regex CollectionHashNumberRegex = new Regex(
+            @"^\s*#(?<number>\d{1,3})\s*[-._:]\s*(?<title>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Matches year suffix: 'Title (2019)', 'Title [2019]'
+        private static readonly Regex CollectionYearSuffixRegex = new Regex(
+            @"^(?<title>.+?)\s*[\(\[]\s*(?<year>\d{4})\s*[\)\]]$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Matches: 'Author Name - Title' (used with author hint)
+        private static readonly Regex CollectionAuthorDashTitleRegex = new Regex(
+            @"^(?<author>.+?)\s*[-]\s*(?<title>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>
+        /// Parse a collection book filename using enhanced patterns and an author hint.
+        /// Strips series numbering, year suffixes, and author prefixes to extract the clean book title.
+        /// </summary>
+        /// <param name="fileName">The filename (with or without extension) to parse</param>
+        /// <param name="authorHint">Optional author name hint to help strip author from filename</param>
+        /// <returns>The extracted book title, or null if parsing fails</returns>
+        public static string ParseCollectionBookTitle(string fileName, string authorHint)
+        {
+            if (fileName.IsNullOrWhiteSpace())
+            {
+                return null;
+            }
+
+            Logger.Debug("Parsing collection book title from '{0}' with author hint '{1}'", fileName, authorHint ?? "(none)");
+
+            // Remove file extension
+            var title = RemoveFileExtension(fileName);
+
+            // Remove common ebook format tags in brackets
+            title = Regex.Replace(title, @"[\(\[]\s*(?:epub|mobi|pdf|azw3?|lit|fb2|cbr|cbz)\s*[\)\]]", "", RegexOptions.IgnoreCase).Trim();
+
+            // If we have an author hint, try to strip the author prefix from the filename
+            if (authorHint.IsNotNullOrWhiteSpace())
+            {
+                var authorMatch = CollectionAuthorDashTitleRegex.Match(title);
+                if (authorMatch.Success)
+                {
+                    var fileAuthor = authorMatch.Groups["author"].Value.Trim();
+
+                    // Check if the author portion matches the hint (fuzzy)
+                    if (IsAuthorMatch(fileAuthor, authorHint))
+                    {
+                        title = authorMatch.Groups["title"].Value.Trim();
+                        Logger.Trace("Stripped author prefix, remaining title: '{0}'", title);
+                    }
+                }
+            }
+
+            // Try series number patterns: '01 - Title'
+            var seriesMatch = CollectionSeriesNumberRegex.Match(title);
+            if (seriesMatch.Success)
+            {
+                title = seriesMatch.Groups["title"].Value.Trim();
+                Logger.Trace("Stripped series number, extracted title: '{0}'", title);
+            }
+            else
+            {
+                // Try 'Book 1 - Title' pattern
+                var bookNumMatch = CollectionBookNumberRegex.Match(title);
+                if (bookNumMatch.Success)
+                {
+                    title = bookNumMatch.Groups["title"].Value.Trim();
+                    Logger.Trace("Stripped book number prefix, extracted title: '{0}'", title);
+                }
+                else
+                {
+                    // Try '#1 - Title' pattern
+                    var hashNumMatch = CollectionHashNumberRegex.Match(title);
+                    if (hashNumMatch.Success)
+                    {
+                        title = hashNumMatch.Groups["title"].Value.Trim();
+                        Logger.Trace("Stripped hash number prefix, extracted title: '{0}'", title);
+                    }
+                }
+            }
+
+            // Strip year suffix: 'Title (2019)' -> 'Title'
+            var yearMatch = CollectionYearSuffixRegex.Match(title);
+            if (yearMatch.Success)
+            {
+                title = yearMatch.Groups["title"].Value.Trim();
+                Logger.Trace("Stripped year suffix, extracted title: '{0}'", title);
+            }
+
+            // Clean up any remaining artifacts
+            title = title.Trim(' ', '-', '_', '.');
+
+            if (title.IsNullOrWhiteSpace())
+            {
+                return null;
+            }
+
+            Logger.Debug("Collection book title parsed: '{0}'", title);
+            return title;
+        }
+
+        /// <summary>
+        /// Extracts a series name from directory structure when files are in subdirectories named after series.
+        /// Given a path like '/Author/SeriesName/01 - Book.epub', extracts 'SeriesName'.
+        /// </summary>
+        /// <param name="filePath">Full file path</param>
+        /// <param name="rootPath">Root path of the collection</param>
+        /// <returns>The series/subdirectory name if the file is in a subdirectory, null otherwise</returns>
+        public static string ParseCollectionSeriesFromPath(string filePath, string rootPath)
+        {
+            if (filePath.IsNullOrWhiteSpace() || rootPath.IsNullOrWhiteSpace())
+            {
+                return null;
+            }
+
+            try
+            {
+                var fileDir = Path.GetDirectoryName(filePath);
+                var normalizedRoot = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var normalizedFileDir = fileDir?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                if (normalizedFileDir == null || normalizedFileDir.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+
+                // Get the relative path from root to the file's directory
+                var relativePath = normalizedFileDir.Substring(normalizedRoot.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                // The first directory component is the series name
+                var firstSep = relativePath.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+                var seriesName = firstSep >= 0 ? relativePath.Substring(0, firstSep) : relativePath;
+
+                if (seriesName.IsNotNullOrWhiteSpace())
+                {
+                    Logger.Trace("Extracted series name from path: '{0}'", seriesName);
+                    return seriesName;
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.Warn(e, "Error parsing collection series from path '{0}'", filePath);
+            }
+
+            return null;
+        }
+
+        private static bool IsAuthorMatch(string candidate, string authorHint)
+        {
+            if (candidate.IsNullOrWhiteSpace() || authorHint.IsNullOrWhiteSpace())
+            {
+                return false;
+            }
+
+            // Normalize both for comparison
+            var normalizedCandidate = candidate.ToLowerInvariant().Trim();
+            var normalizedHint = authorHint.ToLowerInvariant().Trim();
+
+            // Exact match
+            if (normalizedCandidate == normalizedHint)
+            {
+                return true;
+            }
+
+            // Check if one contains the other (handles "First Last" vs "Last, First")
+            var candidateParts = normalizedCandidate.Split(new[] { ' ', ',', '.' }, StringSplitOptions.RemoveEmptyEntries);
+            var hintParts = normalizedHint.Split(new[] { ' ', ',', '.' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // All parts of the hint appear in the candidate or vice versa
+            if (hintParts.Length > 0 && hintParts.All(p => candidateParts.Contains(p)))
+            {
+                return true;
+            }
+
+            if (candidateParts.Length > 0 && candidateParts.All(p => hintParts.Contains(p)))
+            {
+                return true;
+            }
+
+            return false;
+        }
     }
 }

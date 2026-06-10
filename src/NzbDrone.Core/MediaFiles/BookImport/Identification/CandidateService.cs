@@ -12,6 +12,7 @@ namespace NzbDrone.Core.MediaFiles.BookImport.Identification
     {
         List<CandidateEdition> GetDbCandidatesFromTags(LocalEdition localEdition, IdentificationOverrides idOverrides, bool includeExisting);
         IEnumerable<CandidateEdition> GetRemoteCandidates(LocalEdition localEdition, IdentificationOverrides idOverrides);
+        List<CandidateEdition> GetCollectionCandidates(string authorName);
     }
 
     public class CandidateService : ICandidateService
@@ -361,6 +362,80 @@ namespace NzbDrone.Core.MediaFiles.BookImport.Identification
                     yield return candidate;
                 }
             }
+        }
+
+        public List<CandidateEdition> GetCollectionCandidates(string authorName)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var candidates = new List<CandidateEdition>();
+
+            if (authorName.IsNullOrWhiteSpace())
+            {
+                return candidates;
+            }
+
+            _logger.Debug("Getting collection candidates for author '{0}'", authorName);
+
+            // First try to find the author in the local database
+            var possibleAuthors = _authorService.GetCandidates(authorName);
+
+            foreach (var author in possibleAuthors)
+            {
+                // Get ALL books by this author from the database
+                var books = _bookService.GetBooksByAuthorMetadataId(author.AuthorMetadataId);
+                _logger.Trace("Found {0} books in database for author '{1}'", books.Count, author.Name);
+
+                foreach (var book in books)
+                {
+                    var editions = _editionService.GetEditionsByBook(book.Id);
+                    foreach (var edition in editions)
+                    {
+                        edition.Book = book;
+                        candidates.Add(new CandidateEdition
+                        {
+                            Edition = edition,
+                            ExistingFiles = new List<BookFile>()
+                        });
+                    }
+                }
+            }
+
+            // If no local candidates found, search remotely by author name
+            if (!candidates.Any())
+            {
+                _logger.Debug("No local collection candidates found for '{0}', searching remotely", authorName);
+
+                try
+                {
+                    var remoteBooks = _bookSearchService.SearchForNewBook(authorName, null);
+                    var seenEditions = new HashSet<string>();
+
+                    foreach (var book in remoteBooks)
+                    {
+                        foreach (var edition in book.Editions.Value)
+                        {
+                            edition.Book = book;
+                            if (seenEditions.Add(edition.ForeignEditionId))
+                            {
+                                candidates.Add(new CandidateEdition
+                                {
+                                    Edition = edition,
+                                    ExistingFiles = new List<BookFile>()
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (MetadataSourceException e)
+                {
+                    _logger.Info(e, "Skipping remote collection search due to Metadata Source Error");
+                }
+            }
+
+            watch.Stop();
+            _logger.Debug("Getting {0} collection candidates for author '{1}' took {2}ms", candidates.Count, authorName, watch.ElapsedMilliseconds);
+
+            return candidates;
         }
 
         private List<CandidateEdition> ToCandidates(IEnumerable<Book> books, HashSet<string> seenCandidates, IdentificationOverrides idOverrides)
