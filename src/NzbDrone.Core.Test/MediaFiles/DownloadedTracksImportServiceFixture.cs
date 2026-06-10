@@ -9,6 +9,7 @@ using Moq;
 using NUnit.Framework;
 using NzbDrone.Common.Disk;
 using NzbDrone.Core.Books;
+using NzbDrone.Core.Configuration;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.MediaFiles;
@@ -43,6 +44,11 @@ namespace NzbDrone.Core.Test.MediaFiles
             Mocker.GetMock<IImportApprovedBooks>()
                   .Setup(s => s.Import(It.IsAny<List<ImportDecision<LocalBook>>>(), true, null, ImportMode.Auto, It.IsAny<bool>()))
                   .Returns(new List<ImportResult>());
+
+            // Prevent collection detection from triggering in standard import tests
+            Mocker.GetMock<IConfigService>()
+                  .Setup(s => s.CollectionDetectionThreshold)
+                  .Returns(999);
 
             var downloadItem = Builder<DownloadClientItem>.CreateNew()
                 .With(v => v.DownloadId = "sab1")
