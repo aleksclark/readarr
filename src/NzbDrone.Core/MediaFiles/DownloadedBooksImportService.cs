@@ -290,7 +290,7 @@ namespace NzbDrone.Core.MediaFiles
                 }
             }
 
-            if (isCollection && importResults.Any(i => i.Result == ImportResultType.Imported))
+            if (isCollection && importResults != null && importResults.Any(i => i.Result == ImportResultType.Imported))
             {
                 _logger.Info("Collection import complete - source folder preserved for seeding: {0}", directoryInfo.FullName);
             }
@@ -371,6 +371,12 @@ namespace NzbDrone.Core.MediaFiles
         private bool IsCollectionDownload(IDirectoryInfo directoryInfo, List<IFileInfo> audioFiles, out int itemCount)
         {
             itemCount = 0;
+
+            if (audioFiles == null || audioFiles.Count == 0)
+            {
+                return false;
+            }
+
             var threshold = _configService.CollectionDetectionThreshold;
 
             // Check 1: Folder name patterns suggesting a collection

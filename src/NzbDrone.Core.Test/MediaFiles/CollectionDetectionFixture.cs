@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using FluentAssertions;
 using Moq;
@@ -18,7 +17,7 @@ using NzbDrone.Test.Common;
 namespace NzbDrone.Core.Test.MediaFiles
 {
     [TestFixture]
-    public class CollectionDetectionFixture : FileSystemTest<DownloadedBooksImportService>
+    public class CollectionDetectionFixture : CoreTest<DownloadedBooksImportService>
     {
         private string _rootFolder;
         private Mock<IDirectoryInfo> _directoryInfo;
@@ -31,6 +30,24 @@ namespace NzbDrone.Core.Test.MediaFiles
             _directoryInfo = new Mock<IDirectoryInfo>();
             _directoryInfo.SetupGet(d => d.FullName).Returns(_rootFolder);
             _directoryInfo.SetupGet(d => d.Name).Returns("Author - Complete Works");
+
+            Mocker.GetMock<IDiskProvider>()
+                  .Setup(d => d.FolderExists(It.IsAny<string>()))
+                  .Returns(true);
+
+            Mocker.GetMock<IDiskProvider>()
+                  .Setup(d => d.GetDirectoryInfo(It.IsAny<string>()))
+                  .Returns<string>(path =>
+                  {
+                      var dirMock = new Mock<IDirectoryInfo>();
+                      dirMock.SetupGet(d => d.FullName).Returns(path);
+                      dirMock.SetupGet(d => d.Name).Returns(Path.GetFileName(path));
+                      return dirMock.Object;
+                  });
+
+            Mocker.GetMock<IDiskProvider>()
+                  .Setup(d => d.GetDirectoryInfos(It.IsAny<string>()))
+                  .Returns(new List<IDirectoryInfo>());
 
             Mocker.GetMock<IConfigService>()
                   .Setup(s => s.CollectionDetectionThreshold)
@@ -45,14 +62,36 @@ namespace NzbDrone.Core.Test.MediaFiles
                   .Returns<string, IEnumerable<IFileInfo>>((b, s) => s.ToList());
         }
 
+        private Mock<IFileInfo> CreateMockFileInfo(string filePath)
+        {
+            var mock = new Mock<IFileInfo>();
+            mock.SetupGet(f => f.FullName).Returns(filePath);
+            mock.SetupGet(f => f.Name).Returns(Path.GetFileName(filePath));
+            mock.SetupGet(f => f.Length).Returns(1024);
+            mock.SetupGet(f => f.Exists).Returns(true);
+            var dirMock = new Mock<IDirectoryInfo>();
+            dirMock.SetupGet(d => d.FullName).Returns(Path.GetDirectoryName(filePath));
+            mock.SetupGet(f => f.Directory).Returns(dirMock.Object);
+            mock.SetupGet(f => f.DirectoryName).Returns(Path.GetDirectoryName(filePath));
+            return mock;
+        }
+
+        private Mock<IDirectoryInfo> CreateMockDirectoryInfo(string dirPath)
+        {
+            var mock = new Mock<IDirectoryInfo>();
+            mock.SetupGet(d => d.FullName).Returns(dirPath);
+            mock.SetupGet(d => d.Name).Returns(Path.GetFileName(dirPath));
+            mock.SetupGet(d => d.Exists).Returns(true);
+            return mock;
+        }
+
         private List<IFileInfo> GivenEpubFiles(int count)
         {
             var files = new List<IFileInfo>();
             for (var i = 0; i < count; i++)
             {
                 var filePath = Path.Combine(_rootFolder, $"Book{i + 1}.epub");
-                FileSystem.AddFile(filePath, new MockFileData("test content"));
-                files.Add(DiskProvider.GetFileInfo(filePath));
+                files.Add(CreateMockFileInfo(filePath).Object);
             }
 
             return files;
@@ -66,18 +105,17 @@ namespace NzbDrone.Core.Test.MediaFiles
             for (var i = 0; i < subdirCount; i++)
             {
                 var subdirPath = Path.Combine(_rootFolder, $"Book {i + 1}");
-                FileSystem.AddDirectory(subdirPath);
+                var subdirMock = CreateMockDirectoryInfo(subdirPath);
 
                 var fileNames = new List<string>();
                 for (var j = 0; j < filesPerSubdir; j++)
                 {
                     var filePath = Path.Combine(subdirPath, $"chapter{j + 1}.mp3");
-                    FileSystem.AddFile(filePath, new MockFileData("audio content"));
-                    files.Add(DiskProvider.GetFileInfo(filePath));
+                    files.Add(CreateMockFileInfo(filePath).Object);
                     fileNames.Add(filePath);
                 }
 
-                subdirs.Add(DiskProvider.GetDirectoryInfo(subdirPath));
+                subdirs.Add(subdirMock.Object);
             }
 
             // Setup subdirectory enumeration
@@ -143,8 +181,6 @@ namespace NzbDrone.Core.Test.MediaFiles
         public void should_detect_collection_with_folder_name_pattern()
         {
             // "Complete Works" in folder name should trigger collection detection
-            _directoryInfo.SetupGet(d => d.Name).Returns("Author - Complete Works");
-
             var files = GivenEpubFiles(1);
 
             Mocker.GetMock<IDiskScanService>()
@@ -184,15 +220,12 @@ namespace NzbDrone.Core.Test.MediaFiles
         {
             // Only 2 files, threshold is 3
             _rootFolder = @"C:\drop\Author - New Book".AsOsAgnostic();
-            _directoryInfo.SetupGet(d => d.FullName).Returns(_rootFolder);
-            _directoryInfo.SetupGet(d => d.Name).Returns("Author - New Book");
 
             var files = new List<IFileInfo>();
             for (var i = 0; i < 2; i++)
             {
                 var filePath = Path.Combine(_rootFolder, $"Book{i + 1}.epub");
-                FileSystem.AddFile(filePath, new MockFileData("test content"));
-                files.Add(DiskProvider.GetFileInfo(filePath));
+                files.Add(CreateMockFileInfo(filePath).Object);
             }
 
             Mocker.GetMock<IDiskScanService>()
@@ -237,8 +270,6 @@ namespace NzbDrone.Core.Test.MediaFiles
         {
             // Multiple subdirs with audio, but all share same book title = not a collection
             _rootFolder = @"C:\drop\Author - Single Audiobook".AsOsAgnostic();
-            _directoryInfo.SetupGet(d => d.FullName).Returns(_rootFolder);
-            _directoryInfo.SetupGet(d => d.Name).Returns("Author - Single Audiobook");
 
             var files = new List<IFileInfo>();
             var subdirs = new List<IDirectoryInfo>();
@@ -246,18 +277,17 @@ namespace NzbDrone.Core.Test.MediaFiles
             for (var i = 0; i < 3; i++)
             {
                 var subdirPath = Path.Combine(_rootFolder, $"CD{i + 1}");
-                FileSystem.AddDirectory(subdirPath);
+                var subdirMock = CreateMockDirectoryInfo(subdirPath);
 
                 var fileNames = new List<string>();
                 for (var j = 0; j < 5; j++)
                 {
                     var filePath = Path.Combine(subdirPath, $"chapter{j + 1}.mp3");
-                    FileSystem.AddFile(filePath, new MockFileData("audio content"));
-                    files.Add(DiskProvider.GetFileInfo(filePath));
+                    files.Add(CreateMockFileInfo(filePath).Object);
                     fileNames.Add(filePath);
                 }
 
-                subdirs.Add(DiskProvider.GetDirectoryInfo(subdirPath));
+                subdirs.Add(subdirMock.Object);
             }
 
             Mocker.GetMock<IDiskScanService>()
@@ -318,8 +348,6 @@ namespace NzbDrone.Core.Test.MediaFiles
         {
             // Multiple subdirs with audio, different book titles = collection
             _rootFolder = @"C:\drop\Author - Anthology".AsOsAgnostic();
-            _directoryInfo.SetupGet(d => d.FullName).Returns(_rootFolder);
-            _directoryInfo.SetupGet(d => d.Name).Returns("Author - Anthology");
 
             var files = new List<IFileInfo>();
             var subdirs = new List<IDirectoryInfo>();
@@ -327,18 +355,17 @@ namespace NzbDrone.Core.Test.MediaFiles
             for (var i = 0; i < 4; i++)
             {
                 var subdirPath = Path.Combine(_rootFolder, $"Book {i + 1}");
-                FileSystem.AddDirectory(subdirPath);
+                var subdirMock = CreateMockDirectoryInfo(subdirPath);
 
                 var fileNames = new List<string>();
                 for (var j = 0; j < 3; j++)
                 {
                     var filePath = Path.Combine(subdirPath, $"chapter{j + 1}.mp3");
-                    FileSystem.AddFile(filePath, new MockFileData("audio content"));
-                    files.Add(DiskProvider.GetFileInfo(filePath));
+                    files.Add(CreateMockFileInfo(filePath).Object);
                     fileNames.Add(filePath);
                 }
 
-                subdirs.Add(DiskProvider.GetDirectoryInfo(subdirPath));
+                subdirs.Add(subdirMock.Object);
             }
 
             Mocker.GetMock<IDiskScanService>()
@@ -409,13 +436,10 @@ namespace NzbDrone.Core.Test.MediaFiles
         public void should_detect_various_collection_folder_patterns(string folderName)
         {
             var folderPath = Path.Combine(@"C:\drop".AsOsAgnostic(), folderName);
-            _directoryInfo.SetupGet(d => d.FullName).Returns(folderPath);
-            _directoryInfo.SetupGet(d => d.Name).Returns(folderName);
 
             var files = new List<IFileInfo>();
             var filePath = Path.Combine(folderPath, "Book1.epub");
-            FileSystem.AddFile(filePath, new MockFileData("test content"));
-            files.Add(DiskProvider.GetFileInfo(filePath));
+            files.Add(CreateMockFileInfo(filePath).Object);
 
             Mocker.GetMock<IDiskScanService>()
                   .Setup(s => s.GetBookFiles(It.IsAny<string>(), It.IsAny<bool>()))
