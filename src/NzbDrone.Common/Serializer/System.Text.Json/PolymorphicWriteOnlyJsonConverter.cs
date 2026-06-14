@@ -6,6 +6,9 @@ namespace NzbDrone.Common.Serializer
 {
     public class PolymorphicWriteOnlyJsonConverter<T> : JsonConverter<T>
     {
+        [ThreadStatic]
+        private static bool _isReading;
+
         public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             // Cannot deserialize abstract/interface types - skip the JSON token
@@ -15,10 +18,24 @@ namespace NzbDrone.Common.Serializer
                 return default;
             }
 
-            // Create options without this converter to avoid infinite recursion
-            var newOptions = new JsonSerializerOptions(options);
-            newOptions.Converters.Remove(this);
-            return JsonSerializer.Deserialize<T>(ref reader, newOptions);
+            // Prevent infinite recursion - this converter is invoked via [JsonConverter] attribute
+            // on the type, so it will be called again when we try to deserialize
+            if (_isReading)
+            {
+                // Already in a read call - use default deserialization by reading as JsonElement
+                using var doc = JsonDocument.ParseValue(ref reader);
+                return default;
+            }
+
+            try
+            {
+                _isReading = true;
+                return JsonSerializer.Deserialize<T>(ref reader, options);
+            }
+            finally
+            {
+                _isReading = false;
+            }
         }
 
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
