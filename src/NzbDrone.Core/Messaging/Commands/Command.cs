@@ -29,6 +29,7 @@ namespace NzbDrone.Core.Messaging.Commands
         public virtual bool IsTypeExclusive => false;
         public virtual bool IsLongRunning => false;
 
+        [JsonInclude]
         public string Name { get; private set; }
         public DateTime? LastExecutionTime { get; set; }
         public DateTime? LastStartTime { get; set; }
