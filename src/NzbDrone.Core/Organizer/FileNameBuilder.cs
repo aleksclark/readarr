@@ -268,7 +268,7 @@ namespace NzbDrone.Core.Organizer
             var seriesLinks = edition.Book.Value.SeriesLinks.Value;
             if (seriesLinks.Any())
             {
-                var primarySeries = seriesLinks.OrderBy(x => x.SeriesPosition).First();
+                var primarySeries = seriesLinks.FirstOrDefault(x => x.IsPrimary) ?? seriesLinks.OrderBy(x => x.SeriesPosition).First();
                 var seriesTitle = primarySeries.Series?.Value?.Title + (primarySeries.Position.IsNotNullOrWhiteSpace() ? $" #{primarySeries.Position}" : string.Empty);
 
                 tokenHandlers["{Book Series}"] = m => primarySeries.Series.Value.Title;
