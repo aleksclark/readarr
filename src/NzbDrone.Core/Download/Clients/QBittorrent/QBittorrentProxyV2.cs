@@ -425,7 +425,11 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
                 catch (HttpException ex)
                 {
                     _logger.Debug("qbitTorrent authentication failed.");
-                    if (ex.Response.StatusCode == HttpStatusCode.Forbidden)
+
+                    // qBittorrent 5.x (WebAPI 2.11+) returns 401 Unauthorized on bad
+                    // credentials; older versions returned 403 Forbidden.
+                    if (ex.Response.StatusCode == HttpStatusCode.Forbidden ||
+                        ex.Response.StatusCode == HttpStatusCode.Unauthorized)
                     {
                         throw new DownloadClientAuthenticationException("Failed to authenticate with qBittorrent.", ex);
                     }
@@ -437,8 +441,12 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
                     throw new DownloadClientUnavailableException("Failed to connect to qBittorrent, please check your settings.", ex);
                 }
 
-                // returns "Fails." on bad login
-                if (response.Content != "Ok.")
+                // qBittorrent returns "Fails." on bad login. Older versions returned
+                // "Ok." on success, but current versions (qBit 5.x / WebAPI 2.11+)
+                // return HTTP 204 with an empty body, so we can no longer require
+                // "Ok." and instead treat anything other than "Fails." as success.
+                // This mirrors the response handling already used elsewhere in this file.
+                if (response.Content == "Fails.")
                 {
                     _logger.Debug("qbitTorrent authentication failed.");
                     throw new DownloadClientAuthenticationException("Failed to authenticate with qBittorrent.");
