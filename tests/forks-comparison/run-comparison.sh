@@ -18,16 +18,16 @@ NETWORK_NAME="forks-test-net"
 # Forks to test (name -> image)
 declare -A FORK_IMAGES
 FORK_IMAGES[aleksclark]="ghcr.io/aleksclark/readarr:develop"
-FORK_IMAGES[bookshelf]="ghcr.io/pennydreadful/bookshelf:nightly"
-FORK_IMAGES[faustvii]="ghcr.io/faustvii/readarr:nightly"
-FORK_IMAGES[linuxserver]="lscr.io/linuxserver/readarr:develop"
+FORK_IMAGES[bookshelf-gr]="ghcr.io/pennydreadful/bookshelf:softcover-v0.4.20.129"
+FORK_IMAGES[bookshelf-hc]="ghcr.io/pennydreadful/bookshelf:hardcover-v0.4.20.129"
+FORK_IMAGES[faustvii]="ghcr.io/faustvii/readarr:latest"
 
 # Port allocation (forkname -> host port)
 declare -A FORK_PORTS
 FORK_PORTS[aleksclark]=18780
-FORK_PORTS[bookshelf]=18781
-FORK_PORTS[faustvii]=18782
-FORK_PORTS[linuxserver]=18783
+FORK_PORTS[bookshelf-gr]=18781
+FORK_PORTS[bookshelf-hc]=18782
+FORK_PORTS[faustvii]=18783
 
 cleanup() {
   echo ""
@@ -76,8 +76,8 @@ EOF
       - TZ=America/Chicago
     volumes:
       - ${fork_name}-config:/config
-      - ${AUDIOBOOKS_DIR}:/audiobooks:ro
-      - ${EBOOKS_DIR}:/ebooks:ro
+      - ${AUDIOBOOKS_DIR}:/audiobooks
+      - ${EBOOKS_DIR}:/ebooks
     depends_on:
       db-${fork_name}:
         condition: service_healthy
@@ -199,14 +199,12 @@ trigger_scan() {
 
   echo "  Triggering scan for ${name}..."
 
-  # Try different command names (varies by fork)
-  for cmd in "RescanFolders" "RefreshAuthor" "ApplicationCheckUpdate"; do
-    curl -sf "${base_url}/api/v1/command" \
-      -X POST \
-      -H "Content-Type: application/json" \
-      ${auth_header:+-H "$auth_header"} \
-      -d "{\"name\":\"${cmd}\"}" >/dev/null 2>&1 || true
-  done
+  # RescanFolders with addNewAuthors=true and filter=none discovers new authors from disk
+  curl -sf "${base_url}/api/v1/command" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    ${auth_header:+-H "$auth_header"} \
+    -d '{"name":"RescanFolders","filter":"none","addNewAuthors":true}' >/dev/null 2>&1 || true
 }
 
 # ─── Wait for tasks to finish ────────────────────────────────────────────────
@@ -298,7 +296,7 @@ generate_report() {
 |------|---------|---------------|----------------|------------|-------|
 EOF
 
-  for fork_name in aleksclark bookshelf faustvii linuxserver; do
+  for fork_name in aleksclark bookshelf-gr bookshelf-hc faustvii; do
     local result_file="${RESULTS_DIR}/${fork_name}.json"
     [ -f "$result_file" ] || continue
     local authors=$(jq -r '.authors_found' "$result_file")
@@ -331,8 +329,9 @@ EOF
 ### Notes
 
 - `aleksclark` fork uses Open Library for metadata
-- `bookshelf` and `faustvii` use reading-glasses (api.bookinfo.pro / GoodReads data)
-- `linuxserver` uses the original Readarr metadata service (partially defunct)
+- `bookshelf-gr` uses reading-glasses with GoodReads data (softcover image)
+- `bookshelf-hc` uses reading-glasses with Hardcover data
+- `faustvii` uses reading-glasses (api.bookinfo.pro / GoodReads data)
 - All Docker images have **read-only** access to media directories
 - Each fork starts with an isolated, empty database
 
@@ -371,8 +370,8 @@ generate_compose
 echo "   Created: ${COMPOSE_FILE}"
 
 echo ""
-echo "2. Pulling images..."
-docker compose -f "$COMPOSE_FILE" pull 2>&1 | tail -5
+echo "2. Pulling images (failures ok if cached)..."
+docker compose -f "$COMPOSE_FILE" pull 2>&1 | tail -10 || true
 
 echo ""
 echo "3. Starting all fork instances..."
@@ -380,14 +379,14 @@ docker compose -f "$COMPOSE_FILE" up -d 2>&1
 
 echo ""
 echo "4. Waiting for instances to become ready..."
-for fork_name in aleksclark bookshelf faustvii linuxserver; do
+for fork_name in aleksclark bookshelf-gr bookshelf-hc faustvii; do
   wait_for_fork "$fork_name" "${FORK_PORTS[$fork_name]}" 300 || true
 done
 
 echo ""
 echo "5. Getting API keys and configuring..."
 declare -A API_KEYS
-for fork_name in aleksclark bookshelf faustvii linuxserver; do
+for fork_name in aleksclark bookshelf-gr bookshelf-hc faustvii; do
   key=$(get_api_key "$fork_name" "${FORK_PORTS[$fork_name]}")
   API_KEYS[$fork_name]="$key"
   [ -n "$key" ] && echo "  ${fork_name}: API key found" || echo "  ${fork_name}: no auth needed"
@@ -396,19 +395,19 @@ done
 
 echo ""
 echo "6. Triggering library scans..."
-for fork_name in aleksclark bookshelf faustvii linuxserver; do
+for fork_name in aleksclark bookshelf-gr bookshelf-hc faustvii; do
   trigger_scan "$fork_name" "${FORK_PORTS[$fork_name]}" "${API_KEYS[$fork_name]}" || true
 done
 
 echo ""
-echo "7. Waiting for imports (up to 10 min per fork)..."
-for fork_name in aleksclark bookshelf faustvii linuxserver; do
-  wait_for_tasks "$fork_name" "${FORK_PORTS[$fork_name]}" "${API_KEYS[$fork_name]}" 600 || true
+echo "7. Waiting for imports (up to 20 min per fork)..."
+for fork_name in aleksclark bookshelf-gr bookshelf-hc faustvii; do
+  wait_for_tasks "$fork_name" "${FORK_PORTS[$fork_name]}" "${API_KEYS[$fork_name]}" 1200 || true
 done
 
 echo ""
 echo "8. Collecting results..."
-for fork_name in aleksclark bookshelf faustvii linuxserver; do
+for fork_name in aleksclark bookshelf-gr bookshelf-hc faustvii; do
   collect_stats "$fork_name" "${FORK_PORTS[$fork_name]}" "${API_KEYS[$fork_name]}" "${RESULTS_DIR}/${fork_name}.json" || true
 done
 
