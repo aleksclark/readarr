@@ -50,15 +50,27 @@ namespace NzbDrone.Core.Parser.Model
                     edition.UseDbFieldsFrom(Edition);
                     edition.BookFiles = Edition.BookFiles;
 
-                    var fullBook = Edition.Book.Value;
+                    var fullBook = Edition.Book?.Value;
+
+                    if (fullBook == null)
+                    {
+                        edition.Book = Edition.Book;
+                        Edition = edition;
+                        return;
+                    }
 
                     var book = new Book();
                     book.UseMetadataFrom(fullBook);
                     book.UseDbFieldsFrom(fullBook);
-                    book.Author.Value.UseMetadataFrom(fullBook.Author.Value);
-                    book.Author.Value.UseDbFieldsFrom(fullBook.Author.Value);
-                    book.Author.Value.Metadata = fullBook.AuthorMetadata.Value;
-                    book.AuthorMetadata = fullBook.AuthorMetadata.Value;
+
+                    if (fullBook.Author?.Value != null)
+                    {
+                        book.Author.Value.UseMetadataFrom(fullBook.Author.Value);
+                        book.Author.Value.UseDbFieldsFrom(fullBook.Author.Value);
+                        book.Author.Value.Metadata = fullBook.AuthorMetadata?.Value;
+                    }
+
+                    book.AuthorMetadata = fullBook.AuthorMetadata?.Value;
                     book.BookFiles = fullBook.BookFiles;
                     book.Editions = new List<Edition> { edition };
 
