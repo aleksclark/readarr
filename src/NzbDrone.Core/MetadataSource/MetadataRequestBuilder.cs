@@ -8,6 +8,8 @@ namespace NzbDrone.Core.MetadataSource
     public interface IMetadataRequestBuilder
     {
         IHttpRequestBuilderFactory GetRequestBuilder();
+        string GetBearerToken();
+        string GetProtocol();
     }
 
     public class MetadataRequestBuilder : IMetadataRequestBuilder
@@ -32,6 +34,16 @@ namespace NzbDrone.Core.MetadataSource
             {
                 return _defaultRequestFactory.Metadata;
             }
+        }
+
+        public string GetBearerToken()
+        {
+            return _configService.MetadataSourceBearerToken ?? string.Empty;
+        }
+
+        public string GetProtocol()
+        {
+            return _configService.MetadataSourceProtocol ?? "default";
         }
     }
 }

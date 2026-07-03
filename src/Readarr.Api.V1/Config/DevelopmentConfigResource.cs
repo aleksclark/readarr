@@ -6,6 +6,8 @@ namespace Prowlarr.Api.V1.Config
     public class DevelopmentConfigResource : RestResource
     {
         public string MetadataSource { get; set; }
+        public string MetadataSourceBearerToken { get; set; }
+        public string MetadataSourceProtocol { get; set; }
         public string ConsoleLogLevel { get; set; }
         public bool LogSql { get; set; }
         public int LogRotate { get; set; }
@@ -19,6 +21,8 @@ namespace Prowlarr.Api.V1.Config
             return new DevelopmentConfigResource
             {
                 MetadataSource = configService.MetadataSource,
+                MetadataSourceBearerToken = configService.MetadataSourceBearerToken,
+                MetadataSourceProtocol = configService.MetadataSourceProtocol,
                 ConsoleLogLevel = model.ConsoleLogLevel,
                 LogSql = model.LogSql,
                 LogRotate = model.LogRotate,
