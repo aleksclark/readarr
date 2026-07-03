@@ -283,6 +283,20 @@ namespace NzbDrone.Core.Configuration
             set { SetValue("MetadataSource", value); }
         }
 
+        public string MetadataSourceBearerToken
+        {
+            get { return GetValue("MetadataSourceBearerToken", ""); }
+
+            set { SetValue("MetadataSourceBearerToken", value); }
+        }
+
+        public string MetadataSourceProtocol
+        {
+            get { return GetValue("MetadataSourceProtocol", "default"); }
+
+            set { SetValue("MetadataSourceProtocol", value); }
+        }
+
         public WriteAudioTagsType WriteAudioTags
         {
             get { return GetValueEnum("WriteAudioTags", WriteAudioTagsType.No); }

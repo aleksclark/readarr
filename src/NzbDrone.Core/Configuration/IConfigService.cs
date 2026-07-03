@@ -69,6 +69,8 @@ namespace NzbDrone.Core.Configuration
 
         //Metadata
         string MetadataSource { get; set; }
+        string MetadataSourceBearerToken { get; set; }
+        string MetadataSourceProtocol { get; set; }
         WriteAudioTagsType WriteAudioTags { get; set; }
         bool ScrubAudioTags { get; set; }
         WriteBookTagsType WriteBookTags { get; set; }

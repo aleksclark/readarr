@@ -4,7 +4,7 @@
     <DataCollectors>
       <DataCollector friendlyName="XPlat code coverage">
         <Configuration>
-          <Format>cobertura,opencover</Format>
+          <Format>cobertura</Format>
           <Exclude>[Readarr.*.Test]*,[Readarr.Test.*]*,[Readarr.Api.V1]*</Exclude>
           <ExcludeByFile>**/Migrations/**,**/obj/**</ExcludeByFile>
           <SingleHit>false</SingleHit>

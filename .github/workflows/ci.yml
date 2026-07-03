@@ -296,74 +296,49 @@ jobs:
           retention-days: 3
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Open Library API Smoke Tests
+  # Open Library API Smoke Tests (informational — does not block CI)
   # ─────────────────────────────────────────────────────────────────────────────
   api-smoke-tests:
     name: Open Library API Smoke Tests
     runs-on: ubuntu-24.04
     # Only run on push, not PRs (avoid hammering external APIs on every PR update)
     if: github.event_name == 'push'
+    # External service availability is not in our control — don't block merges
+    continue-on-error: true
 
     steps:
-      - name: Test Search Endpoint
+      - name: Test Open Library Endpoints
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://openlibrary.org/search.json?q=test&limit=1&fields=key,title")
-          if [ "$response" != "200" ]; then
-            echo "❌ Search API returned $response"
-            exit 1
-          fi
-          echo "✅ Search API: $response"
+          test_endpoint() {
+            local name="$1" url="$2" accept_codes="$3"
+            local attempts=3 delay=5
+            for i in $(seq 1 $attempts); do
+              response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url")
+              if echo "$accept_codes" | grep -qw "$response"; then
+                echo "✅ $name: HTTP $response"
+                return 0
+              fi
+              echo "⚠️  $name attempt $i/$attempts: HTTP $response (expected one of: $accept_codes)"
+              [ $i -lt $attempts ] && sleep $delay
+            done
+            echo "❌ $name: failed after $attempts attempts (last: HTTP $response)"
+            return 1
+          }
 
-      - name: Test Works Endpoint
-        run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://openlibrary.org/works/OL45804W.json")
-          if [ "$response" != "200" ]; then
-            echo "❌ Works API returned $response"
-            exit 1
-          fi
-          echo "✅ Works API: $response"
+          failed=0
+          test_endpoint "Search"   "https://openlibrary.org/search.json?q=test&limit=1&fields=key,title" "200" || failed=$((failed+1))
+          test_endpoint "Works"    "https://openlibrary.org/works/OL45804W.json" "200" || failed=$((failed+1))
+          test_endpoint "Authors"  "https://openlibrary.org/authors/OL23919A.json" "200" || failed=$((failed+1))
+          test_endpoint "Editions" "https://openlibrary.org/works/OL45804W/editions.json?limit=1" "200" || failed=$((failed+1))
+          test_endpoint "ISBN"     "https://openlibrary.org/isbn/9780140328721.json" "200 301 302" || failed=$((failed+1))
+          test_endpoint "Covers"   "https://covers.openlibrary.org/b/id/240727-S.jpg" "200" || failed=$((failed+1))
 
-      - name: Test Authors Endpoint
-        run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://openlibrary.org/authors/OL23919A.json")
-          if [ "$response" != "200" ]; then
-            echo "❌ Authors API returned $response"
+          echo ""
+          if [ $failed -gt 0 ]; then
+            echo "⚠️  $failed endpoint(s) unreachable — Open Library may be experiencing issues"
             exit 1
           fi
-          echo "✅ Authors API: $response"
-
-      - name: Test Editions Endpoint
-        run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://openlibrary.org/works/OL45804W/editions.json?limit=1")
-          if [ "$response" != "200" ]; then
-            echo "❌ Editions API returned $response"
-            exit 1
-          fi
-          echo "✅ Editions API: $response"
-
-      - name: Test ISBN Endpoint
-        run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://openlibrary.org/isbn/9780140328721.json")
-          if [ "$response" != "200" ] && [ "$response" != "301" ] && [ "$response" != "302" ]; then
-            echo "❌ ISBN API returned $response"
-            exit 1
-          fi
-          echo "✅ ISBN API: $response"
-
-      - name: Test Covers Endpoint
-        run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://covers.openlibrary.org/b/id/240727-S.jpg")
-          if [ "$response" != "200" ]; then
-            echo "❌ Covers API returned $response"
-            exit 1
-          fi
-          echo "✅ Covers API: $response"
+          echo "✅ All Open Library endpoints healthy"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Docker Build
