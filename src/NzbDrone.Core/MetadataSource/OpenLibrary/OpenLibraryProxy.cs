@@ -165,21 +165,42 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
 
         public Tuple<string, Book, List<AuthorMetadata>> GetBookInfo(string foreignEditionId)
         {
-            var edition = GetEdition(foreignEditionId);
-            if (edition == null)
-            {
-                throw new BookNotFoundException(foreignEditionId);
-            }
+            string workKey;
+            OpenLibraryWorkResource work;
+            List<OpenLibraryEditionResource> editions;
 
-            // Get the parent work
-            var workKey = edition.Works?.FirstOrDefault()?.Key?.Replace("/works/", "");
-            if (workKey.IsNullOrWhiteSpace())
+            // Detect Work IDs (OL...W pattern) vs Edition IDs (OL...M pattern)
+            if (foreignEditionId.StartsWith("OL") && foreignEditionId.EndsWith("W"))
             {
-                throw new BookNotFoundException(foreignEditionId);
-            }
+                // This is already a Work ID — fetch directly
+                workKey = foreignEditionId;
+                work = GetWork(workKey);
+                if (work == null)
+                {
+                    throw new BookNotFoundException(foreignEditionId);
+                }
 
-            var work = GetWork(workKey);
-            var editions = GetWorkEditions(workKey);
+                editions = GetWorkEditions(workKey);
+            }
+            else
+            {
+                // Treat as an Edition ID
+                var edition = GetEdition(foreignEditionId);
+                if (edition == null)
+                {
+                    throw new BookNotFoundException(foreignEditionId);
+                }
+
+                // Get the parent work
+                workKey = edition.Works?.FirstOrDefault()?.Key?.Replace("/works/", "");
+                if (workKey.IsNullOrWhiteSpace())
+                {
+                    throw new BookNotFoundException(foreignEditionId);
+                }
+
+                work = GetWork(workKey);
+                editions = GetWorkEditions(workKey);
+            }
 
             var book = MapWork(work, editions);
             var authors = new List<AuthorMetadata>();
