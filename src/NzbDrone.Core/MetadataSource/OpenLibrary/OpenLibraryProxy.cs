@@ -220,15 +220,21 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
                     var authorKey = doc.AuthorKeys[i];
                     if (!authorMap.ContainsKey(authorKey))
                     {
+                        var authorName = doc.AuthorNames[i];
+                        var authorNameLastFirst = authorName.ToLastFirst();
                         var author = new Author
                         {
                             Metadata = new AuthorMetadata
                             {
                                 ForeignAuthorId = authorKey,
-                                Name = doc.AuthorNames[i],
+                                TitleSlug = authorKey,
+                                Name = authorName,
+                                SortName = authorName.ToLower(),
+                                NameLastFirst = authorNameLastFirst,
+                                SortNameLastFirst = authorNameLastFirst.ToLower(),
                                 Status = AuthorStatusType.Continuing,
                             },
-                            CleanName = doc.AuthorNames[i].CleanAuthorName(),
+                            CleanName = authorName.CleanAuthorName(),
                         };
 
                         authorMap[authorKey] = author;
@@ -538,10 +544,26 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             if (doc.AuthorNames != null && doc.AuthorNames.Count > 0)
             {
                 var authorId = doc.AuthorKeys?.FirstOrDefault() ?? "";
-                book.AuthorMetadata = new LazyLoaded<AuthorMetadata>(new AuthorMetadata
+                var authorName = doc.AuthorNames.First();
+                var authorNameLastFirst = authorName.ToLastFirst();
+                var authorMetadata = new AuthorMetadata
                 {
                     ForeignAuthorId = authorId,
-                    Name = doc.AuthorNames.First(),
+                    TitleSlug = authorId,
+                    Name = authorName,
+                    SortName = authorName.ToLower(),
+                    NameLastFirst = authorNameLastFirst,
+                    SortNameLastFirst = authorNameLastFirst.ToLower(),
+                    Status = AuthorStatusType.Continuing,
+                };
+                book.AuthorMetadata = new LazyLoaded<AuthorMetadata>(authorMetadata);
+                book.Author = new LazyLoaded<Author>(new Author
+                {
+                    Metadata = new LazyLoaded<AuthorMetadata>(authorMetadata),
+                    CleanName = authorName.CleanAuthorName(),
+                    ForeignAuthorId = authorId,
+                    Series = new LazyLoaded<List<Series>>(new List<Series>()),
+                    Books = new LazyLoaded<List<Book>>(new List<Book>()),
                 });
             }
 
