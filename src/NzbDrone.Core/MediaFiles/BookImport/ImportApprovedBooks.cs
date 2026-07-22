@@ -334,7 +334,7 @@ namespace NzbDrone.Core.MediaFiles.BookImport
             foreach (var bookImport in bookImports)
             {
                 var book = bookImport.First().ImportDecision.Item.Book;
-                var edition = book.Editions.Value.Single(x => x.Monitored);
+                var edition = book.Editions.Value.SingleOrDefault(x => x.Monitored) ?? book.Editions.Value.First();
                 var author = bookImport.First().ImportDecision.Item.Author;
 
                 if (bookImport.Where(e => e.Errors.Count == 0).ToList().Count > 0 && author != null && book != null)

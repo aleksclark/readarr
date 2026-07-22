@@ -16,7 +16,7 @@ namespace NzbDrone.Core.Notifications.Webhook
             MetadataId = book.ForeignBookId;
             Title = book.Title;
             ReleaseDate = book.ReleaseDate;
-            Edition = new WebhookBookEdition(book.Editions.Value.Single(e => e.Monitored));
+            Edition = new WebhookBookEdition(book.Editions.Value.SingleOrDefault(e => e.Monitored) ?? book.Editions.Value.First());
         }
 
         public int Id { get; set; }

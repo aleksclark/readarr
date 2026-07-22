@@ -143,7 +143,8 @@ namespace Readarr.Api.V1.Books
         [HttpGet("{id:int}/overview")]
         public object Overview(int id)
         {
-            var overview = _editionService.GetEditionsByBook(id).Single(x => x.Monitored).Overview;
+            var editions = _editionService.GetEditionsByBook(id);
+            var overview = (editions.SingleOrDefault(x => x.Monitored) ?? editions.FirstOrDefault())?.Overview;
             return new
             {
                 id,
