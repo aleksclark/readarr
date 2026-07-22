@@ -333,6 +333,17 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             {
                 if (work?.Title.IsNullOrWhiteSpace() == false)
                 {
+                    // Create a stub edition so the book passes metadata profile filtering.
+                    // Full edition details are fetched later during individual book refresh.
+                    var stubEdition = new Edition
+                    {
+                        ForeignEditionId = work.WorkId,
+                        TitleSlug = work.WorkId,
+                        Title = work.Title,
+                        Monitored = true,
+                        ReleaseDate = ParseDate(work.FirstPublishDate),
+                    };
+
                     var book = new Book
                     {
                         ForeignBookId = work.WorkId,
@@ -342,7 +353,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
                         ReleaseDate = ParseDate(work.FirstPublishDate),
                         AuthorMetadataId = metadata.Id,
                         AuthorMetadata = new LazyLoaded<AuthorMetadata>(metadata),
-                        Editions = new LazyLoaded<List<Edition>>(new List<Edition>()),
+                        Editions = new LazyLoaded<List<Edition>>(new List<Edition> { stubEdition }),
                         Ratings = new Ratings(),
                         Links = new List<Links>
                         {
