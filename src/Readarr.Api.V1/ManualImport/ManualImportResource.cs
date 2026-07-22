@@ -47,7 +47,7 @@ namespace Readarr.Api.V1.ManualImport
                 Size = model.Size,
                 Author = model.Author.ToResource(),
                 Book = model.Book.ToResource(),
-                ForeignEditionId = model.Edition?.ForeignEditionId ?? model.Book?.Editions.Value.Single(x => x.Monitored).ForeignEditionId,
+                ForeignEditionId = model.Edition?.ForeignEditionId ?? (model.Book?.Editions.Value.SingleOrDefault(x => x.Monitored) ?? model.Book?.Editions.Value.FirstOrDefault())?.ForeignEditionId,
                 Quality = model.Quality,
                 ReleaseGroup = model.ReleaseGroup,
 
