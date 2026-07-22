@@ -152,9 +152,11 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary.Resources
     public class OpenLibraryAuthorRole
     {
         [JsonPropertyName("author")]
+        [JsonConverter(typeof(OpenLibraryReferenceConverter))]
         public OpenLibraryReference Author { get; set; }
 
         [JsonPropertyName("type")]
+        [JsonConverter(typeof(OpenLibraryReferenceConverter))]
         public OpenLibraryReference Type { get; set; }
     }
 
@@ -162,6 +164,49 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary.Resources
     {
         [JsonPropertyName("key")]
         public string Key { get; set; }
+    }
+
+    /// <summary>
+    /// Handles OL's inconsistent serialization where a reference can be either
+    /// a string ("/type/author_role") or an object ({"key": "/type/author_role"})
+    /// </summary>
+    public class OpenLibraryReferenceConverter : System.Text.Json.Serialization.JsonConverter<OpenLibraryReference>
+    {
+        public override OpenLibraryReference Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options)
+        {
+            if (reader.TokenType == System.Text.Json.JsonTokenType.String)
+            {
+                return new OpenLibraryReference { Key = reader.GetString() };
+            }
+
+            if (reader.TokenType == System.Text.Json.JsonTokenType.StartObject)
+            {
+                var element = System.Text.Json.JsonElement.ParseValue(ref reader);
+                if (element.TryGetProperty("key", out var keyProp))
+                {
+                    return new OpenLibraryReference { Key = keyProp.GetString() };
+                }
+
+                return new OpenLibraryReference();
+            }
+
+            // Skip unexpected token types
+            reader.Skip();
+            return null;
+        }
+
+        public override void Write(System.Text.Json.Utf8JsonWriter writer, OpenLibraryReference value, System.Text.Json.JsonSerializerOptions options)
+        {
+            if (value == null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("key", value.Key);
+            writer.WriteEndObject();
+        }
     }
 
     public class OpenLibraryLink

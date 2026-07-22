@@ -301,11 +301,40 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
         {
             var metadata = MapAuthorMetadata(olAuthor);
 
+            var books = new List<Book>();
+            foreach (var work in works ?? Enumerable.Empty<OpenLibraryWorkResource>())
+            {
+                if (work?.Title.IsNullOrWhiteSpace() == false)
+                {
+                    var book = new Book
+                    {
+                        ForeignBookId = work.WorkId,
+                        TitleSlug = work.WorkId,
+                        Title = work.Title,
+                        CleanTitle = work.Title.CleanAuthorName(),
+                        ReleaseDate = ParseDate(work.FirstPublishDate),
+                        AuthorMetadataId = metadata.Id,
+                        AuthorMetadata = new LazyLoaded<AuthorMetadata>(metadata),
+                        Editions = new LazyLoaded<List<Edition>>(new List<Edition>()),
+                        Ratings = new Ratings(),
+                        Links = new List<Links>
+                        {
+                            new Links { Url = $"{BaseUrl}/works/{work.WorkId}", Name = "Open Library" }
+                        },
+                        Genres = work.Subjects?.Take(10).ToList() ?? new List<string>(),
+                    };
+
+                    books.Add(book);
+                }
+            }
+
             var author = new Author
             {
                 Metadata = new LazyLoaded<AuthorMetadata>(metadata),
                 CleanName = metadata.Name.CleanAuthorName(),
                 ForeignAuthorId = olAuthor.AuthorId,
+                Books = new LazyLoaded<List<Book>>(books),
+                Series = new LazyLoaded<List<Series>>(new List<Series>()),
             };
 
             return author;
@@ -316,12 +345,15 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             var images = new List<MediaCover.MediaCover>();
             if (olAuthor.Photos != null && olAuthor.Photos.Count > 0)
             {
-                var photoId = olAuthor.Photos.First(p => p > 0);
-                images.Add(new MediaCover.MediaCover
+                var photoId = olAuthor.Photos.FirstOrDefault(p => p > 0);
+                if (photoId > 0)
                 {
-                    Url = $"{CoversBaseUrl}/a/id/{photoId}-L.jpg",
-                    CoverType = MediaCoverTypes.Poster
-                });
+                    images.Add(new MediaCover.MediaCover
+                    {
+                        Url = $"{CoversBaseUrl}/a/id/{photoId}-L.jpg",
+                        CoverType = MediaCoverTypes.Poster
+                    });
+                }
             }
 
             var links = new List<Links>();
@@ -336,14 +368,24 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
                 Name = "Open Library"
             });
 
+            var name = olAuthor.Name ?? olAuthor.PersonalName ?? "Unknown";
+            var nameLastFirst = name.ToLastFirst();
+
             return new AuthorMetadata
             {
                 ForeignAuthorId = olAuthor.AuthorId,
-                Name = olAuthor.Name ?? olAuthor.PersonalName ?? "Unknown",
+                TitleSlug = olAuthor.AuthorId,
+                Name = name,
+                SortName = name.ToLower(),
+                NameLastFirst = nameLastFirst,
+                SortNameLastFirst = nameLastFirst.ToLower(),
+                Aliases = olAuthor.AlternateNames ?? new List<string>(),
                 Overview = olAuthor.GetBio(),
+                Born = ParseDate(olAuthor.BirthDate),
+                Died = ParseDate(olAuthor.DeathDate),
+                Status = olAuthor.DeathDate.IsNotNullOrWhiteSpace() ? AuthorStatusType.Ended : AuthorStatusType.Continuing,
                 Images = images,
                 Links = links,
-                Status = AuthorStatusType.Continuing,
             };
         }
 
@@ -367,6 +409,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             var book = new Book
             {
                 ForeignBookId = work.WorkId,
+                TitleSlug = work.WorkId,
                 Title = work.Title,
                 CleanTitle = work.Title?.CleanAuthorName(),
                 ReleaseDate = releaseDate,
@@ -412,12 +455,15 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             var images = new List<MediaCover.MediaCover>();
             if (olEdition.Covers != null && olEdition.Covers.Count > 0)
             {
-                var coverId = olEdition.Covers.First(c => c > 0);
-                images.Add(new MediaCover.MediaCover
+                var coverId = olEdition.Covers.FirstOrDefault(c => c > 0);
+                if (coverId > 0)
                 {
-                    Url = $"{CoversBaseUrl}/b/id/{coverId}-L.jpg",
-                    CoverType = MediaCoverTypes.Cover
-                });
+                    images.Add(new MediaCover.MediaCover
+                    {
+                        Url = $"{CoversBaseUrl}/b/id/{coverId}-L.jpg",
+                        CoverType = MediaCoverTypes.Cover
+                    });
+                }
             }
 
             var format = olEdition.PhysicalFormat ?? "";
@@ -426,6 +472,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             return new Edition
             {
                 ForeignEditionId = olEdition.EditionId,
+                TitleSlug = olEdition.EditionId,
                 Title = olEdition.FullTitle ?? olEdition.Title ?? parentBook?.Title ?? "Unknown Edition",
                 Isbn13 = olEdition.GetIsbn13() ?? ConvertIsbn10ToIsbn13(olEdition.GetIsbn10()),
                 Asin = GetAsin(olEdition),
@@ -471,6 +518,7 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             var book = new Book
             {
                 ForeignBookId = doc.WorkId,
+                TitleSlug = doc.WorkId,
                 Title = doc.Title,
                 CleanTitle = doc.Title.CleanAuthorName(),
                 ReleaseDate = releaseDate,
@@ -498,9 +546,11 @@ namespace NzbDrone.Core.MetadataSource.OpenLibrary
             }
 
             // Create a synthetic edition from search data
+            var editionId = doc.EditionKeys?.FirstOrDefault() ?? doc.WorkId;
             var edition = new Edition
             {
-                ForeignEditionId = doc.EditionKeys?.FirstOrDefault() ?? doc.WorkId,
+                ForeignEditionId = editionId,
+                TitleSlug = editionId,
                 Title = doc.Title,
                 Isbn13 = doc.Isbns?.FirstOrDefault(i => i.Length == 13),
                 PageCount = doc.NumberOfPagesMedian ?? 0,
