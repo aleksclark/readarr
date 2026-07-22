@@ -60,7 +60,7 @@ namespace Readarr.Api.V1.Search
                 {
                     resource.Book = book.ToResource();
                     resource.Book.Overview = book.Editions.Value.SingleOrDefault(x => x.Monitored)?.Overview ?? book.Editions.Value.FirstOrDefault()?.Overview;
-                    resource.Book.Author = book.Author.Value.ToResource();
+                    resource.Book.Author = book.Author?.Value?.ToResource();
                     resource.Book.Editions = book.Editions.Value.ToResource();
                     resource.ForeignId = book.ForeignBookId;
 
@@ -73,7 +73,10 @@ namespace Readarr.Api.V1.Search
                         resource.Book.RemoteCover = cover.RemoteUrl;
                     }
 
-                    resource.Book.Author.Folder = _fileNameBuilder.GetAuthorFolder(book.Author);
+                    if (book.Author?.Value?.Name != null)
+                    {
+                        resource.Book.Author.Folder = _fileNameBuilder.GetAuthorFolder(book.Author);
+                    }
                 }
                 else
                 {
